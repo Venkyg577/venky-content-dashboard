@@ -150,14 +150,15 @@ body {
 /* Responsive kanban - horizontal scroll on mobile */
 @media (max-width: 768px) {
   .kanban-scroll {
-    height: calc(100dvh - 160px) !important;
+    height: calc(100dvh - 120px) !important;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x mandatory;
-    padding-bottom: 80px !important;
+    padding-bottom: 70px !important;
   }
   .kanban-scroll > div {
     min-width: 80vw !important;
     width: 80vw !important;
+    height: 100% !important;
     scroll-snap-align: start;
     flex-shrink: 0 !important;
   }
