@@ -150,16 +150,36 @@ body {
 /* Responsive kanban - horizontal scroll on mobile */
 @media (max-width: 768px) {
   .kanban-scroll {
-    height: calc(100dvh - 120px) !important;
+    display: flex !important;
+    flex-direction: row !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x mandatory;
-    padding-bottom: 70px !important;
+    height: calc(100dvh - 130px) !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    gap: 10px !important;
   }
   .kanban-scroll > div {
-    min-width: 80vw !important;
-    width: 80vw !important;
+    min-width: 82vw !important;
+    width: 82vw !important;
     height: 100% !important;
-    scroll-snap-align: start;
+    max-height: none !important;
+    scroll-snap-align: center;
     flex-shrink: 0 !important;
+  }
+  /* Ensure scrollable card area fills the column */
+  .kanban-scroll > div > div:last-child {
+    flex: 1 !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+  }
+}
+
+/* Safe area for bottom nav */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: calc(0.25rem + env(safe-area-inset-bottom));
   }
 }

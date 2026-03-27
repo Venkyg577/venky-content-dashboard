@@ -139,7 +139,7 @@ export function Dashboard() {
     const ready = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'ready_to_post');
     const published = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'published');
     return (
-      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in" style={{ height: 'calc(100dvh - 140px)' }}>
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in h-full">
         <Column title="Scouted" count={scouted.length} accent="var(--royal)">
           {scouted.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
           {scouted.length === 0 && <EmptyState />}
@@ -170,7 +170,7 @@ export function Dashboard() {
     const ready = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'ready_to_post');
     const published = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'published');
     return (
-      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in" style={{ height: 'calc(100dvh - 140px)' }}>
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in h-full">
         <Column title="Draft" count={drafted.length} accent="var(--plum)">
           {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
           {drafted.length === 0 && <EmptyState />}
@@ -195,7 +195,7 @@ export function Dashboard() {
     const published = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'published');
     return (
       <div className="space-y-4 h-full flex flex-col fade-in">
-        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1" style={{ height: 'calc(100dvh - 200px)' }}>
+        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1 h-full">
           <Column title="Research" count={research.length} accent="var(--royal)">
             {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
             {research.length === 0 && <EmptyState />}
@@ -540,8 +540,8 @@ export function Dashboard() {
       </nav>
 
       {/* Content */}
-      <main className={`flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-3 md:p-5 pb-20 md:pb-5`}>
-        <div className="mx-auto h-full">
+      <main className={`flex-1 min-h-0 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto pb-20 md:pb-5' : 'overflow-hidden'} p-3 md:p-5`}>
+        <div className="h-full">
           {tab === 'overview' && renderOverview()}
           {tab === 'linkedin' && renderLinkedIn()}
           {tab === 'carousels' && renderCarousels()}
