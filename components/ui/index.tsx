@@ -13,7 +13,7 @@ export function Column({ title, count, children, accent = 'var(--royal)' }: {
     <div className="flex flex-col min-w-[280px] w-[300px] md:w-auto md:flex-1 bg-white rounded-xl border border-[var(--border)] flex-shrink-0 h-full shadow-sm">
       <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--border)] flex-shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-2.5 h-2.5 rounded-full ring-2 ring-offset-1" style={{ backgroundColor: accent, ringColor: accent + '33' }} />
+          <div className="w-2.5 h-2.5 rounded-full ring-2 ring-offset-1" style={{ backgroundColor: accent, ['--tw-ring-color' as any]: accent + '33' }} />
           <span className="font-semibold text-sm text-[var(--text-primary)]">{title}</span>
         </div>
         <span className="text-xs font-semibold min-w-[24px] h-6 flex items-center justify-center bg-[var(--surface)] px-2 rounded-full text-[var(--text-muted)] border border-[var(--border)]">{count}</span>

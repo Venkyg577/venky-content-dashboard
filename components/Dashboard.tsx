@@ -551,7 +551,7 @@ export function Dashboard() {
       </main>
 
       {renderModal()}
-      <Toast message={data.toast} />
+      <Toast message={data.toast?.msg || ''} />
     </div>
   );
 }
