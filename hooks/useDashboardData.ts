@@ -39,8 +39,10 @@ export function useDashboardData() {
 
   const requireAuth = (fn: () => void) => {
     if (authed) return fn();
+    const dashPw = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD;
+    if (!dashPw) { setAuthed(true); return fn(); } // No password set = open access
     const pw = prompt('Password:');
-    if (pw === (process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD || '')) { setAuthed(true); fn(); }
+    if (pw === dashPw) { setAuthed(true); fn(); }
     else showToast('Wrong password');
   };
 
