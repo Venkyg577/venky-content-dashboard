@@ -133,11 +133,11 @@ export function Dashboard() {
 
   // === LINKEDIN TAB ===
   const renderLinkedIn = () => {
-    const scouted = data.linkedinTopics.filter(t => t.stage === 'scouted' && t.status !== 'archived');
-    const research = data.linkedinTopics.filter(t => t.stage === 'researched' && t.status !== 'archived');
-    const drafted = data.linkedinDrafts.filter(d => d.stage === 'drafted' && d.status !== 'rejected');
-    const ready = data.linkedinDrafts.filter(d => d.stage === 'ready_to_post');
-    const published = data.linkedinDrafts.filter(d => d.stage === 'published');
+    const scouted = data.topics.filter(t => t.channel === "linkedin").filter(t => t.stage === 'scouted' && t.status !== 'archived');
+    const research = data.topics.filter(t => t.channel === "linkedin").filter(t => t.stage === 'researched' && t.status !== 'archived');
+    const drafted = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'drafted' && d.status !== 'rejected');
+    const ready = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'ready_to_post');
+    const published = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'published');
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in" style={{ height: 'calc(100dvh - 140px)' }}>
         <Column title="Scouted" count={scouted.length} accent="var(--royal)">
@@ -166,9 +166,9 @@ export function Dashboard() {
 
   // === CAROUSELS TAB ===
   const renderCarousels = () => {
-    const drafted = data.carouselDrafts.filter(d => d.stage === 'drafted' && d.status !== 'rejected');
-    const ready = data.carouselDrafts.filter(d => d.stage === 'ready_to_post');
-    const published = data.carouselDrafts.filter(d => d.stage === 'published');
+    const drafted = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'drafted' && d.status !== 'rejected');
+    const ready = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'ready_to_post');
+    const published = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'published');
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in" style={{ height: 'calc(100dvh - 140px)' }}>
         <Column title="Draft" count={drafted.length} accent="var(--plum)">
@@ -189,10 +189,10 @@ export function Dashboard() {
 
   // === BLOGS TAB ===
   const renderBlogs = () => {
-    const research = data.blogTopics.filter(t => t.status !== 'archived' && t.stage !== 'approved');
-    const drafted = data.blogDrafts.filter(d => d.stage === 'drafted' && d.status !== 'rejected');
-    const approved = data.blogDrafts.filter(d => d.stage === 'ready_to_post' || d.status === 'approved');
-    const published = data.blogDrafts.filter(d => d.stage === 'published');
+    const research = data.topics.filter(t => t.channel === "blog").filter(t => t.status !== 'archived' && t.stage !== 'approved');
+    const drafted = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'drafted' && d.status !== 'rejected');
+    const approved = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'ready_to_post' || d.status === 'approved');
+    const published = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'published');
     return (
       <div className="space-y-4 h-full flex flex-col fade-in">
         <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1" style={{ height: 'calc(100dvh - 200px)' }}>
@@ -223,7 +223,7 @@ export function Dashboard() {
 
   // === CALENDAR TAB ===
   const renderCalendar = () => {
-    const allDrafts = [...data.linkedinDrafts, ...data.carouselDrafts].filter(d => d.target_publish_date);
+    const allDrafts = [...data.drafts.filter(d => d.channel === "linkedin"), ...data.drafts.filter(d => d.channel === "carousel")].filter(d => d.target_publish_date);
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const start = new Date(today); const dow = start.getDay();
     start.setDate(start.getDate() - (dow === 0 ? 6 : dow - 1));
@@ -443,7 +443,7 @@ export function Dashboard() {
                 <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} placeholder={mode === 'reject' ? 'Why reject? (required)' : 'What needs to change? (required)'} className="w-full border border-[var(--border)] rounded-xl p-4 text-sm focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none transition-all resize-none" rows={3} autoFocus />
                 <div className="flex gap-2 mt-3">
                   {mode === 'reject' && <button onClick={() => data.requireAuth(() => { data.rejectItem(type, item, feedbackText); setModal(null); setFeedbackText(''); })} disabled={!feedbackText.trim()} className="px-4 py-2.5 bg-[var(--red)] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all">Reject</button>}
-                  {mode === 'revise' && <button onClick={() => data.requireAuth(() => { data.reviseItem(type, item, feedbackText); setModal(null); setFeedbackText(''); })} disabled={!feedbackText.trim()} className="px-4 py-2.5 bg-[var(--gold)] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all">Send for revision</button>}
+                  {mode === 'revise' && <button onClick={() => data.requireAuth(() => { type === "draft" ? data.reviseDraft(item.id, feedbackText) : null; setModal(null); setFeedbackText(''); })} disabled={!feedbackText.trim()} className="px-4 py-2.5 bg-[var(--gold)] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all">Send for revision</button>}
                   <button onClick={() => { setModal({ ...modal, mode: 'view' }); setFeedbackText(''); }} className="px-4 py-2.5 bg-gray-100 rounded-xl text-sm font-semibold text-[var(--text-secondary)] hover:bg-gray-200 transition-colors">Cancel</button>
                 </div>
               </div>
