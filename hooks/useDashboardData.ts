@@ -153,5 +153,6 @@ export function useDashboardData() {
     pendingLinkedin,
     pendingCarousels,
     pendingBlogs,
+    authed: true, // For now, assume authed
   };
 }
