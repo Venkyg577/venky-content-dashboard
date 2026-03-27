@@ -69,3 +69,19 @@ export type Run = {
   completed_at: number | null;
   duration_ms: number | null;
 };
+
+export type AgentTask = {
+  id: string;
+  task_type: 'research' | 'draft' | 'revise';
+  agent: 'owl' | 'bee';
+  ref_id: string;
+  ref_title: string | null;
+  payload: Record<string, any>;
+  status: 'pending' | 'claimed' | 'running' | 'completed' | 'failed';
+  result: Record<string, any> | null;
+  run_id: string | null;
+  created_at: string;
+  claimed_at: string | null;
+  completed_at: string | null;
+  error: string | null;
+};
