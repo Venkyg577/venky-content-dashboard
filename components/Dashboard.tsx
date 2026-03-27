@@ -1,0 +1,557 @@
+'use client';
+
+import { useState } from 'react';
+import { Topic, Draft, Feedback } from '@/lib/supabase';
+import { useDashboardData } from '@/hooks/useDashboardData';
+import { Column, TopicCard, DraftCard, Toast, EmptyState } from '@/components/ui';
+import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter } from '@/lib/format';
+import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
+
+type Tab = 'overview' | 'linkedin' | 'carousels' | 'blogs' | 'calendar';
+
+export function Dashboard() {
+  const data = useDashboardData();
+  const [tab, setTab] = useState<Tab>('overview');
+  const [modal, setModal] = useState<{ type: 'topic' | 'draft'; item: any; mode: 'view' | 'reject' | 'revise' } | null>(null);
+  const [feedbackText, setFeedbackText] = useState('');
+
+  const handleCopy = (text: string) => copyToClipboard(text, data.showToast);
+
+  if (data.loading) return (
+    <div className="h-screen h-[100dvh] flex items-center justify-center bg-[var(--surface)]">
+      <div className="text-center">
+        <div className="relative w-10 h-10 mx-auto mb-4">
+          <div className="absolute inset-0 rounded-full border-2 border-[var(--border)]" />
+          <div className="absolute inset-0 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin" />
+        </div>
+        <p className="text-sm text-[var(--text-muted)] font-medium">Loading dashboard...</p>
+      </div>
+    </div>
+  );
+
+  // Card action handlers
+  const topicCardProps = (t: Topic) => ({
+    t,
+    onView: (t: Topic) => setModal({ type: 'topic' as const, item: t, mode: 'view' as const }),
+    onApprove: data.approveTopic,
+    onReject: data.rejectTopic,
+    onArchive: data.archiveTopic,
+    requireAuth: data.requireAuth,
+  });
+
+  const draftCardProps = (d: Draft) => ({
+    d,
+    onView: (d: Draft) => setModal({ type: 'draft' as const, item: d, mode: 'view' as const }),
+    onApprove: data.approveDraft,
+    onReject: data.rejectDraft,
+    onArchive: data.archiveDraft,
+    onRevise: (d: Draft) => setModal({ type: 'draft' as const, item: d, mode: 'revise' as const }),
+    onPublish: data.publishDraft,
+    onCopy: handleCopy,
+    requireAuth: data.requireAuth,
+  });
+
+  // === OVERVIEW TAB ===
+  const renderOverview = () => {
+    const agentEmojis: Record<string, string> = { eagle: '🦅', owl: '🦉', bee: '🐝', wolf: '🐺', stork: '🦩', crane: '🏗️', pelican: '📰' };
+    const metrics = [
+      { label: 'Pending review', value: data.pendingLinkedin + data.pendingCarousels + data.pendingBlogs, color: 'var(--gold)', bg: 'var(--gold-light)', icon: '⏳' },
+      { label: 'Ready to post', value: data.drafts.filter(d => d.stage === 'ready_to_post').length, color: 'var(--sage)', bg: 'var(--sage-light)', icon: '✅' },
+      { label: 'Published', value: data.drafts.filter(d => d.stage === 'published').length, color: 'var(--royal)', bg: 'var(--royal-light)', icon: '🚀' },
+      { label: 'In revision', value: data.drafts.filter(d => d.status === 'revision').length, color: 'var(--accent)', bg: 'var(--accent-light)', icon: '📝' },
+      { label: 'Total topics', value: data.topics.length, color: 'var(--plum)', bg: 'var(--plum-light)', icon: '💡' },
+    ];
+
+    return (
+      <div className="space-y-6 fade-in">
+        {/* Metrics */}
+        <div className="grid grid-cols-2 xs:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+          {metrics.map(m => (
+            <div key={m.label} className="bg-white rounded-xl border border-[var(--border)] p-4 md:p-5 hover:shadow-md transition-shadow">
+              <div className="flex items-start justify-between mb-3">
+                <span className="text-2xl md:text-3xl">{m.icon}</span>
+                <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: m.bg }}>
+                  <span className="text-lg font-bold" style={{ color: m.color }}>{m.value}</span>
+                </div>
+              </div>
+              <p className="text-xs font-medium text-[var(--text-secondary)]">{m.label}</p>
+              <div className="h-[3px] mt-3 rounded-full opacity-40" style={{ backgroundColor: m.color }} />
+            </div>
+          ))}
+        </div>
+
+        {/* Agent Runs */}
+        <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">
+          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+            <h3 className="font-semibold text-sm text-[var(--text-primary)]">Recent agent runs</h3>
+            <span className="text-2xs text-[var(--text-muted)]">{data.runs.length} total</span>
+          </div>
+          <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
+            {/* Mobile: card layout / Desktop: table */}
+            <div className="hidden md:block">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-2xs text-[var(--text-muted)] uppercase tracking-wider border-b border-[var(--border)]"><th className="px-5 py-3">Time</th><th className="px-5 py-3">Agent</th><th className="px-5 py-3">Job</th><th className="px-5 py-3 text-right">Status</th></tr></thead>
+                <tbody>
+                  {data.runs.slice(0, 20).map(r => {
+                    const agentKey = (r.agent_id || r.job_name || '').toLowerCase();
+                    const emoji = Object.entries(agentEmojis).find(([k]) => agentKey.includes(k))?.[1] || '🤖';
+                    return (
+                      <tr key={r.id} className="border-t border-[var(--border)] hover:bg-[var(--surface)] transition-colors">
+                        <td className="px-5 py-3.5 text-[var(--text-muted)] text-xs">{r.started_at ? new Date(r.started_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : '—'}</td>
+                        <td className="px-5 py-3.5 text-sm font-medium text-[var(--text-primary)]">{emoji} {r.agent_id || '—'}</td>
+                        <td className="px-5 py-3.5 text-sm text-[var(--text-secondary)]">{r.job_name}</td>
+                        <td className="px-5 py-3.5 text-right"><span className={`text-2xs font-semibold px-2.5 py-1 rounded-full ${r.status === 'completed' || r.status === 'ok' ? 'bg-[var(--sage-light)] text-[var(--sage)]' : r.status === 'error' || r.status === 'failed' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-[var(--gold-light)] text-[var(--gold)]'}`}>{r.status}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile card layout */}
+            <div className="md:hidden divide-y divide-[var(--border)]">
+              {data.runs.slice(0, 20).map(r => {
+                const agentKey = (r.agent_id || r.job_name || '').toLowerCase();
+                const emoji = Object.entries(agentEmojis).find(([k]) => agentKey.includes(k))?.[1] || '🤖';
+                return (
+                  <div key={r.id} className="px-4 py-3 flex items-center gap-3">
+                    <span className="text-xl">{emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[var(--text-primary)] truncate">{r.agent_id || r.job_name}</p>
+                      <p className="text-2xs text-[var(--text-muted)]">{r.started_at ? new Date(r.started_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : '—'}</p>
+                    </div>
+                    <span className={`text-2xs font-semibold px-2 py-1 rounded-full flex-shrink-0 ${r.status === 'completed' || r.status === 'ok' ? 'bg-[var(--sage-light)] text-[var(--sage)]' : r.status === 'error' || r.status === 'failed' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-[var(--gold-light)] text-[var(--gold)]'}`}>{r.status}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {data.runs.length === 0 && <EmptyState message="No runs yet" />}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // === LINKEDIN TAB ===
+  const renderLinkedIn = () => {
+    const scouted = data.linkedinTopics.filter(t => t.stage === 'scouted' && t.status !== 'archived');
+    const research = data.linkedinTopics.filter(t => t.stage === 'researched' && t.status !== 'archived');
+    const drafted = data.linkedinDrafts.filter(d => d.stage === 'drafted' && d.status !== 'rejected');
+    const ready = data.linkedinDrafts.filter(d => d.stage === 'ready_to_post');
+    const published = data.linkedinDrafts.filter(d => d.stage === 'published');
+    return (
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in" style={{ height: 'calc(100dvh - 140px)' }}>
+        <Column title="Scouted" count={scouted.length} accent="var(--royal)">
+          {scouted.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {scouted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Research" count={research.length} accent="var(--plum)">
+          {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {research.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Drafted" count={drafted.length} accent="var(--gold)">
+          {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {drafted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Ready to post" count={ready.length} accent="var(--sage)">
+          {ready.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {ready.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Published" count={published.length} accent="var(--plum)">
+          {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
+          {published.length === 0 && <EmptyState />}
+        </Column>
+      </div>
+    );
+  };
+
+  // === CAROUSELS TAB ===
+  const renderCarousels = () => {
+    const drafted = data.carouselDrafts.filter(d => d.stage === 'drafted' && d.status !== 'rejected');
+    const ready = data.carouselDrafts.filter(d => d.stage === 'ready_to_post');
+    const published = data.carouselDrafts.filter(d => d.stage === 'published');
+    return (
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in" style={{ height: 'calc(100dvh - 140px)' }}>
+        <Column title="Draft" count={drafted.length} accent="var(--plum)">
+          {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {drafted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Approved" count={ready.length} accent="var(--sage)">
+          {ready.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {ready.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Published" count={published.length} accent="var(--royal)">
+          {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
+          {published.length === 0 && <EmptyState />}
+        </Column>
+      </div>
+    );
+  };
+
+  // === BLOGS TAB ===
+  const renderBlogs = () => {
+    const research = data.blogTopics.filter(t => t.status !== 'archived' && t.stage !== 'approved');
+    const drafted = data.blogDrafts.filter(d => d.stage === 'drafted' && d.status !== 'rejected');
+    const approved = data.blogDrafts.filter(d => d.stage === 'ready_to_post' || d.status === 'approved');
+    const published = data.blogDrafts.filter(d => d.stage === 'published');
+    return (
+      <div className="space-y-4 h-full flex flex-col fade-in">
+        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1" style={{ height: 'calc(100dvh - 200px)' }}>
+          <Column title="Research" count={research.length} accent="var(--royal)">
+            {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+            {research.length === 0 && <EmptyState />}
+          </Column>
+          <Column title="Drafts" count={drafted.length} accent="var(--gold)">
+            {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+            {drafted.length === 0 && <EmptyState />}
+          </Column>
+          <Column title="Approved" count={approved.length} accent="var(--sage)">
+            {approved.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+            {approved.length === 0 && <EmptyState />}
+          </Column>
+          <Column title="Published" count={published.length} accent="var(--plum)">
+            {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
+            {published.length === 0 && <EmptyState />}
+          </Column>
+        </div>
+        <div className="bg-white rounded-xl p-4 text-xs text-[var(--text-secondary)] border border-[var(--border)] flex-shrink-0 flex items-center gap-3 shadow-sm">
+          <span className="text-lg">🔄</span>
+          <span><strong className="text-[var(--text-primary)]">Pipeline:</strong> Stork researches → Crane writes → You approve → Pelican publishes</span>
+        </div>
+      </div>
+    );
+  };
+
+  // === CALENDAR TAB ===
+  const renderCalendar = () => {
+    const allDrafts = [...data.linkedinDrafts, ...data.carouselDrafts].filter(d => d.target_publish_date);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const start = new Date(today); const dow = start.getDay();
+    start.setDate(start.getDate() - (dow === 0 ? 6 : dow - 1));
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const fmt = (d: Date) => d.toISOString().split('T')[0];
+
+    const weeks = [];
+    for (let w = 0; w < 3; w++) {
+      const ws = new Date(start); ws.setDate(ws.getDate() + w * 7);
+      const we = new Date(ws); we.setDate(we.getDate() + 6);
+      const days = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(ws); d.setDate(d.getDate() + i);
+        if (d.getDay() === 0) continue;
+        const dk = fmt(d);
+        const dd = allDrafts.filter(x => x.target_publish_date === dk && x.status !== 'rejected');
+        days.push({ date: d, dk, dd, isToday: dk === fmt(today), dayName: dayNames[i], expectedFormat: [1, 3, 5].includes(d.getDay()) ? 'CAROUSEL' : 'TEXT' });
+      }
+      weeks.push({ start: ws, end: we, days });
+    }
+
+    return (
+      <div className="space-y-4 fade-in">
+        {/* Legend */}
+        <div className="flex flex-wrap gap-4 text-xs text-[var(--text-secondary)]">
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[var(--plum)]" />Carousel (Mon/Wed/Fri)</span>
+          <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-[var(--royal)]" />Text (Tue/Thu/Sat)</span>
+        </div>
+
+        {weeks.map((week, wi) => (
+          <div key={wi} className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">
+            <div className="bg-[var(--surface)] border-b border-[var(--border)] px-4 md:px-5 py-3 flex items-center justify-between">
+              <span className="font-semibold text-sm text-[var(--text-primary)]">Week {wi + 1}</span>
+              <span className="text-2xs text-[var(--text-muted)]">{fmt(week.start)} → {fmt(week.end)}</span>
+            </div>
+            {/* Desktop: grid / Mobile: list */}
+            <div className="hidden md:grid md:grid-cols-6 divide-x divide-[var(--border)]">
+              {week.days.map((day, di) => {
+                const pick = day.dd[0];
+                return (
+                  <div key={di}
+                    className={`p-3 min-h-[100px] cursor-pointer hover:bg-[var(--surface)] transition-colors ${day.isToday ? 'bg-[var(--royal-light)]' : ''}`}
+                    onClick={() => pick && setModal({ type: 'draft', item: pick, mode: 'view' })}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className={`text-xs font-semibold ${day.isToday ? 'text-[var(--royal)]' : 'text-[var(--text-secondary)]'}`}>{day.dayName} {day.date.getDate()}</span>
+                      <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded ${day.expectedFormat === 'CAROUSEL' ? 'bg-[var(--plum-light)] text-[var(--plum)]' : 'bg-[var(--royal-light)] text-[var(--royal)]'}`}>{day.expectedFormat === 'CAROUSEL' ? 'C' : 'T'}</span>
+                    </div>
+                    {pick ? (
+                      <div>
+                        <p className="text-xs font-medium text-[var(--text-primary)] line-clamp-2 mb-1">{pick.topic}</p>
+                        <span className={`text-2xs font-semibold ${pick.stage === 'published' ? 'text-[var(--sage)]' : pick.stage === 'ready_to_post' ? 'text-[var(--royal)]' : 'text-[var(--gold)]'}`}>
+                          {pick.stage === 'published' ? 'Posted' : pick.stage === 'ready_to_post' ? 'Ready' : 'Pending'}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1 mt-2">
+                        <svg className="w-3.5 h-3.5 text-[var(--red)]" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                        <span className="text-2xs text-[var(--red)]">No content</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {/* Mobile: list */}
+            <div className="md:hidden divide-y divide-[var(--border)]">
+              {week.days.map((day, di) => {
+                const pick = day.dd[0];
+                return (
+                  <div key={di}
+                    className={`flex items-center px-4 py-3 ${day.isToday ? 'bg-[var(--royal-light)]' : ''}`}
+                    onClick={() => pick && setModal({ type: 'draft', item: pick, mode: 'view' })}
+                    style={{ cursor: pick ? 'pointer' : 'default' }}>
+                    <span className={`font-semibold text-sm w-16 flex-shrink-0 ${day.isToday ? 'text-[var(--royal)]' : 'text-[var(--text-secondary)]'}`}>{day.dayName} {day.date.getDate()}</span>
+                    <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full mr-3 flex-shrink-0 ${day.expectedFormat === 'CAROUSEL' ? 'bg-[var(--plum-light)] text-[var(--plum)]' : 'bg-[var(--royal-light)] text-[var(--royal)]'}`}>{day.expectedFormat}</span>
+                    {pick ? (
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="text-sm truncate flex-1 text-[var(--text-primary)]">{pick.topic}</span>
+                        <span className={`text-2xs font-semibold whitespace-nowrap ${pick.stage === 'published' ? 'text-[var(--sage)]' : pick.stage === 'ready_to_post' ? 'text-[var(--royal)]' : 'text-[var(--gold)]'}`}>
+                          {pick.stage === 'published' ? 'Posted' : pick.stage === 'ready_to_post' ? 'Ready' : 'Pending'}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[var(--red)] text-sm flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01" /></svg>
+                        No content
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // === MODAL ===
+  const renderModal = () => {
+    if (!modal) return null;
+    const { type, item, mode } = modal;
+    const itemFb = data.feedback.filter(f => f.item_id === item.id);
+    const content = item.content || item.summary || '';
+    const isBlog = item.channel === 'blog' || item.draft_type === 'blog';
+
+    return (
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center" onClick={() => { setModal(null); setFeedbackText(''); }}>
+        {/* Mobile: bottom sheet / Desktop: centered modal */}
+        <div className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
+             onClick={e => e.stopPropagation()}>
+          {/* Drag handle on mobile */}
+          <div className="md:hidden flex justify-center pt-2 pb-1">
+            <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
+          </div>
+
+          {/* Header */}
+          <div className="px-5 py-4 border-b border-[var(--border)] bg-[var(--surface)] flex-shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex-1 min-w-0">
+                <h2 className="font-semibold text-lg text-[var(--text-primary)] leading-snug line-clamp-2">{item.topic || item.title || '—'}</h2>
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  {item.connection && <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full ${item.connection === 'DIRECT' ? 'bg-[var(--sage-light)] text-[var(--sage)]' : 'bg-[var(--gold-light)] text-[var(--gold)]'}`}>{item.connection}</span>}
+                  {item.fit_score && <span className="text-2xs text-[var(--text-muted)]">{item.fit_score}</span>}
+                  {item.word_count && <span className="text-2xs text-[var(--text-muted)]">{item.word_count} words</span>}
+                  {item.draft_type && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-[var(--text-secondary)]">{item.draft_type}</span>}
+                </div>
+              </div>
+              <button onClick={() => { setModal(null); setFeedbackText(''); }} className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {type === 'draft' && content && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button onClick={() => handleCopy(content)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy content</button>
+                {item.caption && <button onClick={() => handleCopy(item.caption)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--plum)] text-white font-semibold hover:opacity-90 transition-colors">Copy caption</button>}
+              </div>
+            )}
+          </div>
+
+          {/* Body */}
+          <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin">
+            {type === 'topic' && (
+              <div className="mb-4 space-y-3">
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noopener" className="flex items-center gap-2 px-4 py-3 bg-[var(--royal-light)] text-[var(--royal)] rounded-xl text-sm font-medium hover:bg-blue-100 transition-colors border border-[var(--royal)]/10 w-full">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                    <span className="truncate flex-1">{item.url.replace('https://www.', '').replace('https://', '')}</span>
+                  </a>
+                ) : (
+                  <a href={'https://www.google.com/search?q=' + encodeURIComponent(item.title || '')} target="_blank" rel="noopener" className="flex items-center gap-2 px-4 py-3 bg-[var(--surface)] text-[var(--text-secondary)] rounded-xl text-sm font-medium hover:bg-gray-200 transition-colors border border-[var(--border)] w-full">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    <span className="truncate flex-1">Search: {item.title}</span>
+                  </a>
+                )}
+                {item.summary && (
+                  <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+                    <div className="px-4 py-2.5 bg-[var(--surface)] border-b border-[var(--border)]">
+                      <p className="text-2xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Research brief</p>
+                    </div>
+                    <div className="px-4 py-4 text-sm text-[var(--text-secondary)] leading-relaxed max-h-[300px] overflow-y-auto scrollbar-thin">
+                      {item.summary.substring(0, 1000)}
+                      {item.summary.length > 1000 && <p className="mt-3 text-xs text-[var(--text-muted)] italic">...truncated</p>}
+                    </div>
+                  </div>
+                )}
+                {!item.summary && (
+                  <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                    <span className="text-lg">🔬</span>
+                    <div>
+                      <p className="font-semibold mb-0.5">No research brief yet</p>
+                      <p className="text-xs leading-relaxed">Approve to trigger Owl research.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isBlog && content && (
+              <div dangerouslySetInnerHTML={{ __html: renderMd(content) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />
+            )}
+
+            {isBlog && content && content.length >= 200 && (() => {
+              const { body: blogBody, meta: blogMeta } = stripFrontmatter(content);
+              const blogTitle = blogMeta.title || item.topic || item.title;
+              return (
+                <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+                  <div className="h-[3px]" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
+                  <div className="px-5 md:px-6 pt-6 pb-4 border-b border-[var(--border)]">
+                    <h1 className="font-heading text-xl md:text-2xl font-bold leading-tight text-[var(--charcoal)] mb-2">{blogTitle}</h1>
+                    {blogMeta.description && <p className="text-sm md:text-base text-[var(--text-muted)]">{blogMeta.description}</p>}
+                  </div>
+                  <div className="px-5 md:px-6 py-5 text-sm leading-relaxed text-[var(--text-secondary)]" dangerouslySetInnerHTML={{ __html: renderMd(blogBody) }} />
+                </div>
+              );
+            })()}
+
+            {/* Feedback history */}
+            {itemFb.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-[var(--border)]">
+                <p className="text-2xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-3">Feedback history</p>
+                <div className="space-y-2">
+                  {itemFb.map(f => (
+                    <div key={f.id} className="flex items-start gap-2 text-sm p-3 bg-[var(--surface)] rounded-xl border border-[var(--border)]">
+                      <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 mt-0.5 ${f.action === 'rejected' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-[var(--gold-light)] text-[var(--gold)]'}`}>{f.action}</span>
+                      <span className="flex-1 text-[var(--text-secondary)] text-sm leading-relaxed">{f.comment}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reject/Revise form */}
+            {(mode === 'reject' || mode === 'revise') && (
+              <div className="mt-6 pt-4 border-t border-[var(--border)]">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-2">{mode === 'reject' ? 'Reject with reason' : 'Request revision'}</p>
+                <textarea value={feedbackText} onChange={e => setFeedbackText(e.target.value)} placeholder={mode === 'reject' ? 'Why reject? (required)' : 'What needs to change? (required)'} className="w-full border border-[var(--border)] rounded-xl p-4 text-sm focus:ring-2 focus:ring-[var(--accent)]/20 focus:border-[var(--accent)] outline-none transition-all resize-none" rows={3} autoFocus />
+                <div className="flex gap-2 mt-3">
+                  {mode === 'reject' && <button onClick={() => data.requireAuth(() => { data.rejectItem(type, item, feedbackText); setModal(null); setFeedbackText(''); })} disabled={!feedbackText.trim()} className="px-4 py-2.5 bg-[var(--red)] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all">Reject</button>}
+                  {mode === 'revise' && <button onClick={() => data.requireAuth(() => { data.reviseItem(type, item, feedbackText); setModal(null); setFeedbackText(''); })} disabled={!feedbackText.trim()} className="px-4 py-2.5 bg-[var(--gold)] text-white rounded-xl text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-all">Send for revision</button>}
+                  <button onClick={() => { setModal({ ...modal, mode: 'view' }); setFeedbackText(''); }} className="px-4 py-2.5 bg-gray-100 rounded-xl text-sm font-semibold text-[var(--text-secondary)] hover:bg-gray-200 transition-colors">Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Footer actions */}
+          {mode === 'view' && (
+            <div className="flex flex-wrap gap-2 px-5 py-4 border-t border-[var(--border)] bg-[var(--surface)] rounded-b-2xl flex-shrink-0">
+              {type === 'topic' && item.status !== 'archived' && (() => {
+                const actions = getTopicActions(item.stage, item.status);
+                return (
+                  <div className="flex gap-2">
+                    {actions.showApprove && <button onClick={() => data.requireAuth(() => { data.approveTopic(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--sage)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Approve</button>}
+                    {actions.showReject && <button onClick={() => setModal({ ...modal!, mode: 'reject' })} className="px-5 py-2.5 bg-[var(--red-light)] text-[var(--red)] rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors">Reject</button>}
+                    {actions.showArchive && <button onClick={() => data.requireAuth(() => { data.archiveTopic(item.id); setModal(null); })} className="px-5 py-2.5 bg-gray-100 text-[var(--text-secondary)] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
+                  </div>
+                );
+              })()}
+              {type === 'draft' && item.stage === 'drafted' && item.status !== 'archived' && (() => {
+                const actions = getDraftActions(item.stage, item.status);
+                return (
+                  <div className="flex gap-2">
+                    {actions.showApprove && <button onClick={() => data.requireAuth(() => { data.approveDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--sage)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Approve</button>}
+                    {actions.showRevise && <button onClick={() => setModal({ ...modal!, mode: 'revise' })} className="px-5 py-2.5 bg-[var(--gold-light)] text-[var(--gold)] rounded-xl text-sm font-semibold hover:bg-amber-100 transition-colors">Revise</button>}
+                    {actions.showReject && <button onClick={() => setModal({ ...modal!, mode: 'reject' })} className="px-5 py-2.5 bg-[var(--red-light)] text-[var(--red)] rounded-xl text-sm font-semibold hover:bg-red-100 transition-colors">Reject</button>}
+                  </div>
+                );
+              })()}
+              {type === 'draft' && item.stage === 'ready_to_post' && (
+                <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
+              )}
+              <div className="flex-1" />
+              <button onClick={() => { setModal(null); setFeedbackText(''); }} className="px-5 py-2.5 bg-gray-100 text-[var(--text-secondary)] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Close</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  // === TABS CONFIG ===
+  const tabs: { key: Tab; label: string; badge: number; icon: string }[] = [
+    { key: 'overview', label: 'Dashboard', badge: 0, icon: '📊' },
+    { key: 'linkedin', label: 'LinkedIn', badge: data.pendingLinkedin, icon: '💼' },
+    { key: 'carousels', label: 'Carousels', badge: data.pendingCarousels, icon: '🎠' },
+    { key: 'blogs', label: 'Blogs', badge: data.pendingBlogs, icon: '📝' },
+    { key: 'calendar', label: 'Calendar', badge: 0, icon: '📅' },
+  ];
+
+  return (
+    <div className="h-screen h-[100dvh] flex flex-col bg-[var(--surface)]">
+      {/* Header */}
+      <header className="bg-white border-b border-[var(--border)] px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--plum)] flex items-center justify-center shadow-sm">
+            <span className="text-white text-sm font-bold">V</span>
+          </div>
+          <div>
+            <h1 className="text-sm md:text-base font-semibold text-[var(--text-primary)] tracking-tight leading-none">Content Dashboard</h1>
+            <p className="text-2xs text-[var(--text-muted)] hidden xs:block mt-0.5">AI-powered content pipeline</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 md:gap-3">
+          <span className="text-xs text-[var(--text-muted)] hidden sm:block">{new Date().toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
+          {data.authed
+            ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-2xs font-semibold bg-[var(--sage-light)] text-[var(--sage)] border border-[var(--sage)]/20"><span className="w-1.5 h-1.5 rounded-full bg-[var(--sage)] pulse-dot" />Unlocked</span>
+            : <button onClick={() => data.requireAuth(() => {})} className="px-3 py-1.5 bg-[var(--surface)] rounded-full text-2xs font-semibold hover:bg-gray-200 transition-colors border border-[var(--border)]">Login</button>}
+        </div>
+      </header>
+
+      {/* Desktop Tabs - pill style */}
+      <nav className="hidden md:flex bg-white border-b border-[var(--border)] px-6 py-2 gap-1 flex-shrink-0">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`px-4 py-2 text-sm font-medium rounded-lg transition-all flex items-center gap-2 ${tab === t.key ? 'bg-[var(--charcoal)] text-white shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--surface)]'}`}>
+            <span className="text-base">{t.icon}</span>
+            {t.label}
+            {t.badge > 0 && <span className={`ml-0.5 px-1.5 py-0.5 text-2xs font-bold rounded-full badge-pop ${tab === t.key ? 'bg-white/20 text-white' : 'bg-[var(--accent)] text-white'}`}>{t.badge}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {/* Mobile Bottom Nav */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] px-2 py-1 flex justify-around z-40 safe-bottom shadow-lg">
+        {tabs.map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`flex flex-col items-center py-1.5 px-2 rounded-lg transition-all relative min-w-[56px] ${tab === t.key ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+            <span className="text-xl">{t.icon}</span>
+            <span className="text-2xs font-medium mt-0.5">{t.label}</span>
+            {t.badge > 0 && <span className="absolute -top-0.5 right-0 min-w-[16px] h-4 flex items-center justify-center px-1 text-2xs font-bold bg-[var(--accent)] text-white rounded-full badge-pop">{t.badge}</span>}
+          </button>
+        ))}
+      </nav>
+
+      {/* Content */}
+      <main className={`flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-3 md:p-5 pb-20 md:pb-5`}>
+        <div className="mx-auto h-full">
+          {tab === 'overview' && renderOverview()}
+          {tab === 'linkedin' && renderLinkedIn()}
+          {tab === 'carousels' && renderCarousels()}
+          {tab === 'blogs' && renderBlogs()}
+          {tab === 'calendar' && renderCalendar()}
+        </div>
+      </main>
+
+      {renderModal()}
+      <Toast message={data.toast} />
+    </div>
+  );
+}
