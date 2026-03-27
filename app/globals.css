@@ -147,20 +147,18 @@ body {
   to { background-position: -200% 0; }
 }
 
-/* Responsive kanban - stack on mobile */
+/* Responsive kanban - horizontal scroll on mobile */
 @media (max-width: 768px) {
   .kanban-scroll {
-    flex-direction: column !important;
-    overflow-x: visible !important;
-    overflow-y: auto !important;
-    height: auto !important;
-    max-height: calc(100dvh - 160px);
-    gap: 12px !important;
+    height: calc(100dvh - 160px) !important;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    padding-bottom: 80px !important;
   }
   .kanban-scroll > div {
-    min-width: 100% !important;
-    width: 100% !important;
-    max-height: 400px;
+    min-width: 80vw !important;
+    width: 80vw !important;
+    scroll-snap-align: start;
     flex-shrink: 0 !important;
   }
 }
