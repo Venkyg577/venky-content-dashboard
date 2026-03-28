@@ -17,6 +17,17 @@ export function Dashboard() {
 
   const handleCopy = (text: string) => copyToClipboard(text, data.showToast);
 
+  // Count revisions per draft — must be before any early returns (hooks order)
+  const revisionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    data.feedback.forEach(f => {
+      if (f.action === 'revision' || f.action === 'revise') {
+        counts[f.item_id] = (counts[f.item_id] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [data.feedback]);
+
   // Shared helpers
   const buildArchivedList = (topics: Topic[], drafts: Draft[]): ArchivedEntry[] => [
     ...topics.map(t => ({ id: t.id, type: 'topic' as const, title: t.title, status: t.status, at: t.revised_at || t.discovered_at })),
@@ -59,17 +70,6 @@ export function Dashboard() {
     onRestore: opts?.showRestore ? data.restoreTopic : undefined,
     requireAuth: data.requireAuth,
   });
-
-  // Count revisions per draft from feedback (memoized — feedback only changes on reload)
-  const revisionCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    data.feedback.forEach(f => {
-      if (f.action === 'revision' || f.action === 'revise') {
-        counts[f.item_id] = (counts[f.item_id] || 0) + 1;
-      }
-    });
-    return counts;
-  }, [data.feedback]);
 
   const draftCardProps = (d: Draft, opts?: { showRestore?: boolean }) => ({
     d,
