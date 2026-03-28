@@ -502,7 +502,10 @@ export function Dashboard() {
             {/* Carousel slide preview */}
             {isDraft && isCarouselItem(item) && item.carousel_json && (() => {
               try {
-                const carousel = typeof item.carousel_json === 'string' ? JSON.parse(item.carousel_json) : item.carousel_json;
+                // Handle raw newlines in JSON strings (agents sometimes output unescaped newlines)
+                const raw = typeof item.carousel_json === 'string' ? item.carousel_json : JSON.stringify(item.carousel_json);
+                const sanitized = raw.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
+                const carousel = JSON.parse(sanitized);
                 const slides = carousel.slides || [];
                 return (
                   <div className="space-y-3">

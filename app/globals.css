@@ -235,14 +235,14 @@ body {
     padding-right: 4px !important;
     padding-bottom: 68px !important;
     gap: 10px !important;
-    /* header ~48px + main padding 12px + bottom nav ~56px + safe area */
-    max-height: calc(100dvh - 105px) !important;
+    /* header ~48px + main padding 12px + bottom nav ~56px */
+    max-height: calc(100dvh - 80px) !important;
   }
   .kanban-scroll > div {
     min-width: 82vw !important;
     width: 82vw !important;
     height: 100% !important;
-    max-height: calc(100dvh - 110px) !important;
+    max-height: calc(100dvh - 85px) !important;
     scroll-snap-align: center;
     flex-shrink: 0 !important;
   }
