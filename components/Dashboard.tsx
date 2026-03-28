@@ -541,7 +541,7 @@ export function Dashboard() {
         <div className="flex items-center gap-2 md:gap-3">
           <span className="text-xs text-[var(--text-muted)] hidden sm:block">{new Date().toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' })}</span>
           {data.authed
-            ? <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-2xs font-semibold bg-[var(--sage-light)] text-[var(--sage)] border border-[var(--sage)]/20"><span className="w-1.5 h-1.5 rounded-full bg-[var(--sage)] pulse-dot" />Unlocked</span>
+            ? <button onClick={data.logout} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-2xs font-semibold bg-[var(--sage-light)] text-[var(--sage)] border border-[var(--sage)]/20 hover:bg-green-100 transition-colors" title="Click to logout"><span className="w-1.5 h-1.5 rounded-full bg-[var(--sage)] pulse-dot" />Logged in</button>
             : <button onClick={() => data.requireAuth(() => {})} className="px-3 py-1.5 bg-[var(--surface)] rounded-full text-2xs font-semibold hover:bg-gray-200 transition-colors border border-[var(--border)]">Login</button>}
         </div>
       </header>

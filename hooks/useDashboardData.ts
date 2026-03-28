@@ -14,7 +14,10 @@ export function useDashboardData() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [agentTasks, setAgentTasks] = useState<AgentTask[]>([]);
   const [loading, setLoading] = useState(true);
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('dashboard_authed') === 'true';
+  });
   const [toast, setToast] = useState('');
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
@@ -49,14 +52,24 @@ export function useDashboardData() {
     return () => { supabase.removeChannel(channel); };
   }, [load]);
 
+  const setAuth = (val: boolean) => {
+    setAuthed(val);
+    if (typeof window !== 'undefined') {
+      if (val) localStorage.setItem('dashboard_authed', 'true');
+      else localStorage.removeItem('dashboard_authed');
+    }
+  };
+
   const requireAuth = (fn: () => void) => {
     if (authed) return fn();
     const dashPw = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD;
-    if (!dashPw) { setAuthed(true); return fn(); } // No password set = open access
+    if (!dashPw) { setAuth(true); return fn(); }
     const pw = prompt('Password:');
-    if (pw === dashPw) { setAuthed(true); fn(); }
+    if (pw === dashPw) { setAuth(true); fn(); }
     else showToast('Wrong password');
   };
+
+  const logout = () => { setAuth(false); showToast('Logged out'); };
 
   const notifySlack = async (channel: string, msg: string) => {
     if (!SLACK_BOT_TOKEN) return;
@@ -236,7 +249,7 @@ export function useDashboardData() {
     topics, drafts, feedback, runs, agentTasks, loading, authed, toast,
     linkedinTopics, linkedinDrafts, carouselDrafts, blogDrafts, blogTopics,
     pendingLinkedin, pendingCarousels, pendingBlogs,
-    requireAuth, showToast, load,
+    requireAuth, logout, showToast, load,
     approveTopic, archiveTopic, rejectTopic,
     approveDraft, publishDraft, rejectDraft, archiveDraft, reviseDraft,
     rejectItem, reviseItem,
