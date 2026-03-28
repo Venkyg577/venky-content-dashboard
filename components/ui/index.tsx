@@ -26,12 +26,13 @@ export function Column({ title, count, children, accent = 'var(--royal)' }: {
 }
 
 // === TOPIC CARD ===
-export function TopicCard({ t, showActions = true, onView, onApprove, onReject, onArchive, requireAuth }: {
+export function TopicCard({ t, showActions = true, onView, onApprove, onReject, onArchive, onRestore, requireAuth }: {
   t: Topic; showActions?: boolean;
   onView: (t: Topic) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
   onArchive: (id: string) => void;
+  onRestore?: (id: string) => void;
   requireAuth: (fn: () => void) => void;
 }) {
   const isBlogTopic = t.channel === 'blog' || t.channel === 'both';
@@ -88,13 +89,18 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
             })()}
           </div>
         )}
+        {showActions && (t.status === 'archived' || t.status === 'rejected') && onRestore && (
+          <div className="flex gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
+            <button onClick={() => requireAuth(() => onRestore(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Restore to Scouted</button>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 // === DRAFT CARD ===
-export function DraftCard({ d, revisionCount = 0, showActions = true, onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, requireAuth }: {
+export function DraftCard({ d, revisionCount = 0, showActions = true, onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, onRestore, requireAuth }: {
   d: Draft; revisionCount?: number; showActions?: boolean;
   onView: (d: Draft) => void;
   onApprove: (id: string) => void;
@@ -103,6 +109,7 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
   onRevise: (d: Draft) => void;
   onPublish: (id: string) => void;
   onCopy: (text: string) => void;
+  onRestore?: (id: string) => void;
   requireAuth: (fn: () => void) => void;
 }) {
   const stLabel = d.stage === 'published' ? 'Published' : d.stage === 'ready_to_post' ? 'Ready' : d.status === 'revision' ? 'Revision' : 'Draft';
@@ -166,6 +173,11 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
             <button onClick={() => d.content && onCopy(extractDraftContent(d.content))} className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy</button>
             <button onClick={() => requireAuth(() => onPublish(d.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Mark published</button>
+          </div>
+        )}
+        {showActions && (d.status === 'archived' || d.status === 'rejected') && onRestore && (
+          <div className="flex gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
+            <button onClick={() => requireAuth(() => onRestore(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Restore to Drafts</button>
           </div>
         )}
       </div>

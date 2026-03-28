@@ -167,6 +167,13 @@ export function useDashboardData() {
     showToast('Archived'); load();
   };
 
+  const restoreTopic = async (id: string) => {
+    const t = topics.find(x => x.id === id);
+    // Restore to scouted/pending so it can go through the pipeline again
+    await supabase.from('topics').update({ status: 'pending', stage: 'scouted' }).eq('id', id);
+    showToast(`Restored: ${t?.title?.substring(0, 30) || 'Topic'}`); load();
+  };
+
   const rejectTopic = async (id: string) => {
     await supabase.from('topics').update({ status: 'rejected' }).eq('id', id);
     showToast('Rejected'); load();
@@ -192,6 +199,12 @@ export function useDashboardData() {
   const archiveDraft = async (id: string) => {
     await supabase.from('drafts').update({ status: 'archived' }).eq('id', id);
     showToast('Archived'); load();
+  };
+
+  const restoreDraft = async (id: string) => {
+    const d = drafts.find(x => x.id === id);
+    await supabase.from('drafts').update({ status: 'pending', stage: 'drafted' }).eq('id', id);
+    showToast(`Restored: ${d?.topic?.substring(0, 30) || 'Draft'}`); load();
   };
 
   const reviseDraft = async (id: string, fb: string) => {
@@ -250,8 +263,8 @@ export function useDashboardData() {
     linkedinTopics, linkedinDrafts, carouselDrafts, blogDrafts, blogTopics,
     pendingLinkedin, pendingCarousels, pendingBlogs,
     requireAuth, logout, showToast, load,
-    approveTopic, archiveTopic, rejectTopic,
-    approveDraft, publishDraft, rejectDraft, archiveDraft, reviseDraft,
+    approveTopic, archiveTopic, rejectTopic, restoreTopic,
+    approveDraft, publishDraft, rejectDraft, archiveDraft, restoreDraft, reviseDraft,
     rejectItem, reviseItem,
   };
 }
