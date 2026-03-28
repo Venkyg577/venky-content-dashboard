@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Topic, Draft, Feedback } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState } from '@/components/ui';
-import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent, extractDraftContent } from '@/lib/format';
+import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent, extractDraftContent, dedup } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
 type Tab = 'overview' | 'linkedin' | 'carousels' | 'blogs' | 'calendar';
@@ -39,8 +39,17 @@ export function Dashboard() {
     requireAuth: data.requireAuth,
   });
 
+  // Count revisions per draft from feedback
+  const revisionCounts: Record<string, number> = {};
+  data.feedback.forEach(f => {
+    if (f.action === 'revision' || f.action === 'revise') {
+      revisionCounts[f.item_id] = (revisionCounts[f.item_id] || 0) + 1;
+    }
+  });
+
   const draftCardProps = (d: Draft) => ({
     d,
+    revisionCount: revisionCounts[d.id] || 0,
     onView: (d: Draft) => setModal({ type: 'draft' as const, item: d, mode: 'view' as const }),
     onApprove: data.approveDraft,
     onReject: data.rejectDraft,
@@ -50,6 +59,10 @@ export function Dashboard() {
     onCopy: handleCopy,
     requireAuth: data.requireAuth,
   });
+
+  // Sort helpers: most recently updated first
+  const sortTopics = (arr: Topic[]) => [...arr].sort((a, b) => (b.revised_at || b.discovered_at) - (a.revised_at || a.discovered_at));
+  const sortDrafts = (arr: Draft[]) => [...arr].sort((a, b) => (b.revised_at || b.created_at) - (a.revised_at || a.created_at));
 
   // === OVERVIEW TAB ===
   const renderOverview = () => {
@@ -133,11 +146,11 @@ export function Dashboard() {
 
   // === LINKEDIN TAB ===
   const renderLinkedIn = () => {
-    const scouted = data.topics.filter(t => t.channel === "linkedin").filter(t => t.stage === 'scouted' && t.status !== 'archived');
-    const research = data.topics.filter(t => t.channel === "linkedin").filter(t => t.stage === 'researched' && t.status !== 'archived');
-    const drafted = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'drafted' && d.status !== 'rejected');
-    const ready = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'ready_to_post');
-    const published = data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'published');
+    const scouted = sortTopics(data.topics.filter(t => t.channel === "linkedin").filter(t => t.stage === 'scouted' && t.status !== 'archived'));
+    const research = sortTopics(data.topics.filter(t => t.channel === "linkedin").filter(t => t.stage === 'researched' && t.status !== 'archived'));
+    const drafted = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'drafted' && d.status !== 'rejected'));
+    const ready = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'ready_to_post'));
+    const published = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'published'));
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in h-full">
         <Column title="Scouted" count={scouted.length} accent="var(--royal)">
@@ -166,9 +179,9 @@ export function Dashboard() {
 
   // === CAROUSELS TAB ===
   const renderCarousels = () => {
-    const drafted = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'drafted' && d.status !== 'rejected');
-    const ready = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'ready_to_post');
-    const published = data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'published');
+    const drafted = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'drafted' && d.status !== 'rejected'));
+    const ready = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'ready_to_post'));
+    const published = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'published'));
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in h-full">
         <Column title="Draft" count={drafted.length} accent="var(--plum)">
@@ -189,10 +202,10 @@ export function Dashboard() {
 
   // === BLOGS TAB ===
   const renderBlogs = () => {
-    const research = data.topics.filter(t => t.channel === "blog").filter(t => t.status !== 'archived' && t.stage !== 'approved');
-    const drafted = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'drafted' && d.status !== 'rejected');
-    const approved = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'ready_to_post' || d.status === 'approved');
-    const published = data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'published');
+    const research = sortTopics(data.topics.filter(t => t.channel === "blog").filter(t => t.status !== 'archived' && t.stage !== 'approved'));
+    const drafted = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'drafted' && d.status !== 'rejected'));
+    const approved = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'ready_to_post' || d.status === 'approved'));
+    const published = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'published'));
     return (
       <div className="space-y-4 h-full flex flex-col fade-in">
         <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1 h-full">
@@ -382,7 +395,7 @@ export function Dashboard() {
                   </a>
                 )}
                 {item.summary && (() => {
-                  const brief = parseResearchBrief(item.summary);
+                  const brief = parseResearchBrief(dedup(item.summary));
                   const isThinking = hasThinkingContent(item.summary);
                   return (
                     <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden">

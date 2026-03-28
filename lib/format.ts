@@ -187,6 +187,21 @@ export const hasThinkingContent = (text: string): boolean => {
   return junkCount >= 3;
 };
 
+// Deduplicate text that's been repeated (agent writes same summary twice)
+export const dedup = (text: string): string => {
+  if (!text) return '';
+  const half = Math.floor(text.length / 2);
+  // Check if the second half is a near-exact repeat of the first
+  const first = text.substring(0, half).trim();
+  const second = text.substring(half).trim();
+  // If >80% of second half appears in first half, it's a repeat
+  if (first.length > 100 && second.length > 100) {
+    const sample = second.substring(0, Math.min(200, second.length));
+    if (first.includes(sample)) return first;
+  }
+  return text;
+};
+
 export const stripFrontmatter = (text: string): { body: string; meta: Record<string, string> } => {
   const meta: Record<string, string> = {};
   let body = text;

@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Topic, Draft } from '@/lib/supabase';
-import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief, extractDraftContent } from '@/lib/format';
+import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief, extractDraftContent, dedup } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
 // === KANBAN COLUMN ===
@@ -37,10 +37,12 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
   const isBlogTopic = t.channel === 'blog' || t.channel === 'both';
   const isResearched = t.stage === 'researched';
   const summarySnippet = t.summary ? (() => {
-    const brief = parseResearchBrief(t.summary);
-    const text = brief.sections.length > 0 ? brief.sections[0].content : t.summary;
+    const cleaned = dedup(t.summary);
+    const brief = parseResearchBrief(cleaned);
+    const text = brief.sections.length > 0 ? brief.sections[0].content : cleaned;
     return text.replace(/^#[^\n]+\n*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^[\s\-*]+/gm, '').trim().substring(0, 140);
   })() : '';
+  const updatedAt = t.revised_at || t.discovered_at;
 
   return (
     <div className="group bg-white rounded-xl border border-[var(--border)] overflow-hidden cursor-pointer card-hover"
@@ -67,7 +69,7 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
         )}
         <div className="flex items-center justify-between text-2xs text-[var(--text-muted)]">
           <span className="truncate max-w-[60%]">{(t.source || '').split('·').map(s => s.trim()).filter(Boolean).join(' · ')}</span>
-          <span>{ago(t.discovered_at)}</span>
+          <span>{ago(updatedAt)}</span>
         </div>
         {showActions && t.status !== 'archived' && (
           <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
@@ -92,8 +94,8 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
 }
 
 // === DRAFT CARD ===
-export function DraftCard({ d, showActions = true, onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, requireAuth }: {
-  d: Draft; showActions?: boolean;
+export function DraftCard({ d, revisionCount = 0, showActions = true, onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, requireAuth }: {
+  d: Draft; revisionCount?: number; showActions?: boolean;
   onView: (d: Draft) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
@@ -133,11 +135,14 @@ export function DraftCard({ d, showActions = true, onView, onApprove, onReject, 
           <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full ${stStyles[stLabel] || 'bg-gray-100 text-[var(--text-secondary)]'}`}>{stLabel}</span>
           <span className={`text-2xs font-semibold px-2 py-0.5 rounded-full ${typeColors[d.draft_type] || 'bg-gray-100 text-[var(--text-secondary)]'}`}>{d.draft_type}</span>
           {d.word_count ? <span className="text-2xs text-[var(--text-muted)]">{d.word_count}w</span> : null}
+          {revisionCount > 0 && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-[var(--gold-light)] text-[var(--gold)]">R{revisionCount}</span>}
         </div>
         <p className="font-semibold text-sm leading-snug mb-1.5 line-clamp-2 text-[var(--text-primary)] group-hover:text-[var(--royal)] transition-colors">{d.topic}</p>
         {snippet && <p className="text-xs text-[var(--text-secondary)] line-clamp-2 mb-2.5 leading-relaxed">{snippet}...</p>}
-        {isBlogDraft && d.blog_url && <p className="text-2xs text-[var(--sage)] mb-1 truncate">{d.blog_url.replace('https://', '')}</p>}
-        {d.target_publish_date && <p className="text-2xs text-[var(--text-muted)]">{d.target_publish_date}</p>}
+        <div className="flex items-center justify-between text-2xs text-[var(--text-muted)]">
+          <span>{isBlogDraft && d.blog_url ? d.blog_url.replace('https://', '') : d.target_publish_date || ''}</span>
+          <span>{ago(d.revised_at || d.created_at)}</span>
+        </div>
 
         {showActions && d.stage === 'drafted' && d.status !== 'archived' && (
           <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
