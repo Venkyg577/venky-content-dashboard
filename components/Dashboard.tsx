@@ -14,7 +14,6 @@ export function Dashboard() {
   const [tab, setTab] = useState<Tab>('overview');
   const [modal, setModal] = useState<{ type: 'topic' | 'draft'; item: any; mode: 'view' | 'reject' | 'revise' } | null>(null);
   const [feedbackText, setFeedbackText] = useState('');
-  const [showArchived, setShowArchived] = useState(false);
 
   const handleCopy = (text: string) => copyToClipboard(text, data.showToast);
 
@@ -156,46 +155,53 @@ export function Dashboard() {
     const published = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'published'));
     const archivedTopics = sortTopics(data.topics.filter(t => (t.channel === "linkedin") && (t.status === 'archived' || t.status === 'rejected')));
     const archivedDrafts = sortDrafts(data.drafts.filter(d => (d.channel === "linkedin") && (d.status === 'archived' || d.status === 'rejected')));
-    const archivedCount = archivedTopics.length + archivedDrafts.length;
+    const archived = [
+      ...archivedTopics.map(t => ({ id: t.id, type: 'topic' as const, title: t.title, status: t.status, at: t.revised_at || t.discovered_at })),
+      ...archivedDrafts.map(d => ({ id: d.id, type: 'draft' as const, title: d.topic, status: d.status, at: d.revised_at || d.created_at })),
+    ].sort((a, b) => (b.at || 0) - (a.at || 0));
     return (
-      <div className="flex flex-col gap-3 h-full fade-in">
-        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1 min-h-0">
-          <Column title="Scouted" count={scouted.length} accent="var(--royal)">
-            {scouted.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
-            {scouted.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Research" count={research.length} accent="var(--plum)">
-            {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
-            {research.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Drafted" count={drafted.length} accent="var(--gold)">
-            {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
-            {drafted.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Ready to post" count={ready.length} accent="var(--sage)">
-            {ready.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
-            {ready.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Published" count={published.length} accent="var(--plum)">
-            {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
-            {published.length === 0 && <EmptyState />}
-          </Column>
-        </div>
-        {archivedCount > 0 && (
-          <div className="flex-shrink-0">
-            <button onClick={() => setShowArchived(!showArchived)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-[var(--border)] text-sm font-medium text-[var(--text-secondary)] hover:bg-[var(--surface)] transition-colors shadow-sm">
-              <span>Archived ({archivedCount})</span>
-              <svg className={`w-4 h-4 transition-transform ${showArchived ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </button>
-            {showArchived && (
-              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 max-h-[300px] overflow-y-auto p-1">
-                {archivedTopics.map(t => <TopicCard key={t.id} {...topicCardProps(t, { showRestore: true })} />)}
-                {archivedDrafts.map(d => <DraftCard key={d.id} {...draftCardProps(d, { showRestore: true })} />)}
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none fade-in h-full">
+        <Column title="Scouted" count={scouted.length} accent="var(--royal)">
+          {scouted.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {scouted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Research" count={research.length} accent="var(--plum)">
+          {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {research.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Drafted" count={drafted.length} accent="var(--gold)">
+          {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {drafted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Ready to post" count={ready.length} accent="var(--sage)">
+          {ready.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {ready.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Published" count={published.length} accent="var(--plum)">
+          {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
+          {published.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Archived" count={archived.length} accent="var(--text-muted)">
+          {archived.map(item => (
+            <div key={item.id} className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--surface)] transition-colors group">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[var(--text-secondary)] truncate leading-snug">{item.title}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded ${item.status === 'rejected' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-gray-100 text-[var(--text-muted)]'}`}>{item.status}</span>
+                  <span className="text-2xs text-[var(--text-muted)]">{item.type}</span>
+                  <span className="text-2xs text-[var(--text-muted)]">{ago(item.at)}</span>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              <button
+                onClick={(e) => { e.stopPropagation(); data.requireAuth(() => item.type === 'topic' ? data.restoreTopic(item.id) : data.restoreDraft(item.id)); }}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--royal)] hover:text-white transition-colors flex-shrink-0 opacity-60 group-hover:opacity-100"
+                title="Restore">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4" /></svg>
+              </button>
+            </div>
+          ))}
+          {archived.length === 0 && <EmptyState message="Nothing archived" />}
+        </Column>
       </div>
     );
   };
@@ -206,7 +212,7 @@ export function Dashboard() {
     const ready = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'ready_to_post'));
     const published = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'published'));
     return (
-      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none fade-in h-full">
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none fade-in h-full">
         <Column title="Draft" count={drafted.length} accent="var(--plum)">
           {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
           {drafted.length === 0 && <EmptyState />}
@@ -231,7 +237,7 @@ export function Dashboard() {
     const published = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'published'));
     return (
       <div className="space-y-4 h-full flex flex-col fade-in">
-        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none flex-1 h-full">
+        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none flex-1 h-full">
           <Column title="Research" count={research.length} accent="var(--royal)">
             {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
             {research.length === 0 && <EmptyState />}
