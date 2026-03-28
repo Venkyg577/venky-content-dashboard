@@ -78,6 +78,65 @@ export const parseResearchBrief = (text: string): { sections: { title: string; c
   return { sections, raw: cleaned };
 };
 
+// Extract the actual post/draft content from agent output that contains thinking narration
+export const extractDraftContent = (text: string): string => {
+  if (!text) return '';
+
+  // Strategy 1: Find content between double newline blocks that looks like a post
+  // The actual post is usually the longest contiguous block of non-thinking text
+  const thinkingPatterns = [
+    /^(I'll |Let me |Now let me |Now I|While waiting|Let me |The fetch|I need to|I should|I'm going to)/i,
+    /^(First,? let me|Next,? let me|Finally,? let me|Alright|Sure,? |Great,? )/i,
+    /^(Waiting for|Polling|Retrying|Attempting|Running|Executing|Calling|Invoking)/i,
+    /^(Word count:|Summary:|Topic:|Approach:|Voice:|Structure:|Saved to:|Supabase:|Draft written|Ready for)/i,
+    /^(The post:|Here's the post|Here is the post)/i,
+  ];
+
+  const lines = text.split('\n');
+  let bestBlock: string[] = [];
+  let currentBlock: string[] = [];
+  let inPost = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    const isThinking = thinkingPatterns.some(p => p.test(trimmed));
+    const isMeta = /^(Word count|Summary|Topic|Approach|Voice|Structure|Saved to|Supabase|Draft written|Ready for):/i.test(trimmed);
+
+    if (isThinking || isMeta) {
+      // End of a content block
+      if (currentBlock.length > bestBlock.length) {
+        bestBlock = [...currentBlock];
+      }
+      currentBlock = [];
+      inPost = false;
+      continue;
+    }
+
+    // Skip "The post:" type headers
+    if (/^the post:?\s*$/i.test(trimmed)) continue;
+
+    // Start collecting content
+    currentBlock.push(line);
+    if (trimmed.length > 0) inPost = true;
+  }
+
+  // Check last block
+  if (currentBlock.length > bestBlock.length) {
+    bestBlock = [...currentBlock];
+  }
+
+  const extracted = bestBlock.join('\n').trim();
+
+  // If we got a reasonable post (>80 chars), use it. Otherwise return cleaned full text.
+  if (extracted.length > 80) return extracted;
+
+  // Fallback: strip thinking lines and return the rest
+  return lines.filter(line => {
+    const trimmed = line.trim();
+    return !thinkingPatterns.some(p => p.test(trimmed));
+  }).join('\n').trim();
+};
+
 // Detect if content still has agent thinking/process narration
 export const hasThinkingContent = (text: string): boolean => {
   if (!text) return false;

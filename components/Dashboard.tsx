@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Topic, Draft, Feedback } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState } from '@/components/ui';
-import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent } from '@/lib/format';
+import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent, extractDraftContent } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
 type Tab = 'overview' | 'linkedin' | 'carousels' | 'blogs' | 'calendar';
@@ -327,7 +327,9 @@ export function Dashboard() {
     if (!modal) return null;
     const { type, item, mode } = modal;
     const itemFb = data.feedback.filter(f => f.item_id === item.id);
-    const content = item.content || item.summary || '';
+    const rawContent = item.content || item.summary || '';
+    const isDraft = type === 'draft';
+    const content = isDraft && rawContent ? extractDraftContent(rawContent) : rawContent;
     const isBlog = item.channel === 'blog' || item.draft_type === 'blog';
 
     return (

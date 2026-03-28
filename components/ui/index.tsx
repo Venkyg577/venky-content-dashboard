@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Topic, Draft } from '@/lib/supabase';
-import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief } from '@/lib/format';
+import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief, extractDraftContent } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
 // === KANBAN COLUMN ===
@@ -119,7 +119,10 @@ export function DraftCard({ d, showActions = true, onView, onApprove, onReject, 
     'hot-take': 'bg-[var(--red-light)] text-[var(--red)]',
   };
   const isBlogDraft = d.channel === 'blog' || d.draft_type === 'blog';
-  const snippet = d.content ? stripFrontmatter(d.content).body.replace(/^#[^\n]+\n*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').trim().substring(0, 120) : '';
+  const snippet = d.content ? (() => {
+    const clean = extractDraftContent(d.content);
+    return stripFrontmatter(clean).body.replace(/^#[^\n]+\n*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').trim().substring(0, 120);
+  })() : '';
 
   return (
     <div className="group bg-white rounded-xl border border-[var(--border)] overflow-hidden cursor-pointer card-hover"
@@ -156,7 +159,7 @@ export function DraftCard({ d, showActions = true, onView, onApprove, onReject, 
         )}
         {showActions && d.stage === 'ready_to_post' && (
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
-            <button onClick={() => d.content && onCopy(d.content)} className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy</button>
+            <button onClick={() => d.content && onCopy(extractDraftContent(d.content))} className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy</button>
             <button onClick={() => requireAuth(() => onPublish(d.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Mark published</button>
           </div>
         )}
