@@ -70,6 +70,13 @@ export type Run = {
   duration_ms: number | null;
 };
 
+// Helpers for channel detection
+export const isBlogItem = (item: { channel?: string; draft_type?: string }) =>
+  item.channel === 'blog' || item.draft_type === 'blog';
+
+export const isBlogTopic = (t: { channel?: string }) =>
+  t.channel === 'blog' || t.channel === 'both';
+
 export type AgentTask = {
   id: string;
   task_type: 'research' | 'draft' | 'revise' | 'blog_research' | 'blog_draft' | 'blog_revise';

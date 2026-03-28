@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { supabase, Topic, Draft, Feedback, Run, AgentTask } from '@/lib/supabase';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { supabase, Topic, Draft, Feedback, Run, AgentTask, isBlogItem } from '@/lib/supabase';
 
 const SLACK_BOT_TOKEN = process.env.NEXT_PUBLIC_SLACK_BOT_TOKEN || '';
 const SLACK_CHANNEL_AIMY = process.env.NEXT_PUBLIC_SLACK_CHANNEL_AIMY || '';
@@ -38,19 +38,26 @@ export function useDashboardData() {
     setLoading(false);
   }, []);
 
+  // Debounced load — collapses rapid realtime events into one reload
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const debouncedLoad = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { load(); }, 400);
+  }, [load]);
+
   // Initial load + polling fallback
   useEffect(() => { load(); const i = setInterval(load, 30000); return () => clearInterval(i); }, [load]);
 
   // Supabase Realtime — instant updates when agents write back to DB
   useEffect(() => {
     const channel = supabase.channel('dashboard-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'topics' }, () => { load(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'drafts' }, () => { load(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_tasks' }, () => { load(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'runs' }, () => { load(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'topics' }, debouncedLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drafts' }, debouncedLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_tasks' }, debouncedLoad)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'runs' }, debouncedLoad)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [load]);
+  }, [debouncedLoad]);
 
   const setAuth = (val: boolean) => {
     setAuthed(val);
@@ -225,7 +232,7 @@ export function useDashboardData() {
   const reviseDraft = async (id: string, fb: string) => {
     if (!fb.trim()) return;
     const draft = drafts.find(d => d.id === id);
-    const isBlogDraft = draft?.channel === 'blog' || draft?.draft_type === 'blog';
+    const isBlogDraft = draft ? isBlogItem(draft) : false;
     const agent = isBlogDraft ? 'crane' : 'bee';
     const taskType = isBlogDraft ? 'blog_revise' : 'revise';
     const slackChannel = isBlogDraft ? SLACK_CHANNEL_BLOG : SLACK_CHANNEL_AIMY;
@@ -255,7 +262,7 @@ export function useDashboardData() {
     if (type === 'topic') {
       await supabase.from('topics').update({ status: 'revision' }).eq('id', item.id);
     } else {
-      const isBlogDraft = item.channel === 'blog' || item.draft_type === 'blog';
+      const isBlogDraft = isBlogItem(item);
       const agent = isBlogDraft ? 'crane' : 'bee';
       const taskType = isBlogDraft ? 'blog_revise' : 'revise';
       await supabase.from('drafts').update({ status: 'revision' }).eq('id', item.id);

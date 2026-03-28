@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Topic, Draft, Feedback } from '@/lib/supabase';
+import { useState, useMemo } from 'react';
+import { Topic, Draft, Feedback, isBlogItem, isBlogTopic } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
-import { Column, TopicCard, DraftCard, Toast, EmptyState } from '@/components/ui';
+import { Column, TopicCard, DraftCard, Toast, EmptyState, ArchivedItemRow, ArchivedEntry } from '@/components/ui';
 import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent, extractDraftContent, dedup } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
@@ -16,6 +16,26 @@ export function Dashboard() {
   const [feedbackText, setFeedbackText] = useState('');
 
   const handleCopy = (text: string) => copyToClipboard(text, data.showToast);
+
+  // Shared helpers
+  const buildArchivedList = (topics: Topic[], drafts: Draft[]): ArchivedEntry[] => [
+    ...topics.map(t => ({ id: t.id, type: 'topic' as const, title: t.title, status: t.status, at: t.revised_at || t.discovered_at })),
+    ...drafts.map(d => ({ id: d.id, type: 'draft' as const, title: d.topic, status: d.status, at: d.revised_at || d.created_at })),
+  ].sort((a, b) => (b.at || 0) - (a.at || 0));
+
+  const handleRestore = (type: 'topic' | 'draft', id: string) => {
+    if (type === 'topic') data.restoreTopic(id);
+    else data.restoreDraft(id);
+  };
+
+  const renderArchivedColumn = (archived: ArchivedEntry[]) => (
+    <Column title="Archived" count={archived.length} accent="var(--text-muted)">
+      {archived.map(item => (
+        <ArchivedItemRow key={item.id} item={item} onRestore={handleRestore} requireAuth={data.requireAuth} />
+      ))}
+      {archived.length === 0 && <EmptyState message="Nothing archived" />}
+    </Column>
+  );
 
   if (data.loading) return (
     <div className="h-screen h-[100dvh] flex items-center justify-center bg-[var(--surface)]">
@@ -40,13 +60,16 @@ export function Dashboard() {
     requireAuth: data.requireAuth,
   });
 
-  // Count revisions per draft from feedback
-  const revisionCounts: Record<string, number> = {};
-  data.feedback.forEach(f => {
-    if (f.action === 'revision' || f.action === 'revise') {
-      revisionCounts[f.item_id] = (revisionCounts[f.item_id] || 0) + 1;
-    }
-  });
+  // Count revisions per draft from feedback (memoized — feedback only changes on reload)
+  const revisionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    data.feedback.forEach(f => {
+      if (f.action === 'revision' || f.action === 'revise') {
+        counts[f.item_id] = (counts[f.item_id] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [data.feedback]);
 
   const draftCardProps = (d: Draft, opts?: { showRestore?: boolean }) => ({
     d,
@@ -62,9 +85,9 @@ export function Dashboard() {
     requireAuth: data.requireAuth,
   });
 
-  // Sort helpers: most recently updated first
-  const sortTopics = (arr: Topic[]) => [...arr].sort((a, b) => (b.revised_at || b.discovered_at) - (a.revised_at || a.discovered_at));
-  const sortDrafts = (arr: Draft[]) => [...arr].sort((a, b) => (b.revised_at || b.created_at) - (a.revised_at || a.created_at));
+  // Sort helpers: most recently updated first (filter() already returns new arrays)
+  const sortTopics = (arr: Topic[]) => arr.sort((a, b) => (b.revised_at || b.discovered_at) - (a.revised_at || a.discovered_at));
+  const sortDrafts = (arr: Draft[]) => arr.sort((a, b) => (b.revised_at || b.created_at) - (a.revised_at || a.created_at));
 
   // === OVERVIEW TAB ===
   const renderOverview = () => {
@@ -153,12 +176,10 @@ export function Dashboard() {
     const drafted = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'drafted' && d.status !== 'rejected' && d.status !== 'archived'));
     const ready = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'ready_to_post'));
     const published = sortDrafts(data.drafts.filter(d => d.channel === "linkedin").filter(d => d.stage === 'published'));
-    const archivedTopics = sortTopics(data.topics.filter(t => (t.channel === "linkedin") && (t.status === 'archived' || t.status === 'rejected')));
-    const archivedDrafts = sortDrafts(data.drafts.filter(d => (d.channel === "linkedin") && (d.status === 'archived' || d.status === 'rejected')));
-    const archived = [
-      ...archivedTopics.map(t => ({ id: t.id, type: 'topic' as const, title: t.title, status: t.status, at: t.revised_at || t.discovered_at })),
-      ...archivedDrafts.map(d => ({ id: d.id, type: 'draft' as const, title: d.topic, status: d.status, at: d.revised_at || d.created_at })),
-    ].sort((a, b) => (b.at || 0) - (a.at || 0));
+    const archived = buildArchivedList(
+      data.topics.filter(t => t.channel === "linkedin" && (t.status === 'archived' || t.status === 'rejected')),
+      data.drafts.filter(d => d.channel === "linkedin" && (d.status === 'archived' || d.status === 'rejected')),
+    );
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none fade-in h-full">
         <Column title="Scouted" count={scouted.length} accent="var(--royal)">
@@ -181,27 +202,7 @@ export function Dashboard() {
           {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
           {published.length === 0 && <EmptyState />}
         </Column>
-        <Column title="Archived" count={archived.length} accent="var(--text-muted)">
-          {archived.map(item => (
-            <div key={item.id} className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--surface)] transition-colors group">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[var(--text-secondary)] truncate leading-snug">{item.title}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded ${item.status === 'rejected' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-gray-100 text-[var(--text-muted)]'}`}>{item.status}</span>
-                  <span className="text-2xs text-[var(--text-muted)]">{item.type}</span>
-                  <span className="text-2xs text-[var(--text-muted)]">{ago(item.at)}</span>
-                </div>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); data.requireAuth(() => item.type === 'topic' ? data.restoreTopic(item.id) : data.restoreDraft(item.id)); }}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--royal)] hover:text-white transition-colors flex-shrink-0 opacity-60 group-hover:opacity-100"
-                title="Restore">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4" /></svg>
-              </button>
-            </div>
-          ))}
-          {archived.length === 0 && <EmptyState message="Nothing archived" />}
-        </Column>
+        {renderArchivedColumn(archived)}
       </div>
     );
   };
@@ -231,19 +232,17 @@ export function Dashboard() {
 
   // === BLOGS TAB ===
   const renderBlogs = () => {
-    const blogFilter = (t: Topic) => t.channel === 'blog' || t.channel === 'both';
-    const blogDraftFilter = (d: Draft) => d.channel === 'blog' || d.draft_type === 'blog';
+    const blogFilter = isBlogTopic;
+    const blogDraftFilter = isBlogItem;
     const scouted = sortTopics(data.topics.filter(blogFilter).filter(t => t.stage === 'scouted' && t.status !== 'archived' && t.status !== 'rejected'));
     const research = sortTopics(data.topics.filter(blogFilter).filter(t => t.stage === 'researched' && t.status !== 'archived' && t.status !== 'rejected'));
     const drafted = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.stage === 'drafted' && d.status !== 'rejected' && d.status !== 'archived'));
     const ready = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.stage === 'ready_to_post'));
     const published = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.stage === 'published'));
-    const archivedTopics = sortTopics(data.topics.filter(blogFilter).filter(t => t.status === 'archived' || t.status === 'rejected'));
-    const archivedDrafts = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.status === 'archived' || d.status === 'rejected'));
-    const archived = [
-      ...archivedTopics.map(t => ({ id: t.id, type: 'topic' as const, title: t.title, status: t.status, at: t.revised_at || t.discovered_at })),
-      ...archivedDrafts.map(d => ({ id: d.id, type: 'draft' as const, title: d.topic, status: d.status, at: d.revised_at || d.created_at })),
-    ].sort((a, b) => (b.at || 0) - (a.at || 0));
+    const archived = buildArchivedList(
+      data.topics.filter(blogFilter).filter(t => t.status === 'archived' || t.status === 'rejected'),
+      data.drafts.filter(blogDraftFilter).filter(d => d.status === 'archived' || d.status === 'rejected'),
+    );
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none fade-in h-full">
         <Column title="Scouted" count={scouted.length} accent="var(--royal)">
@@ -266,27 +265,7 @@ export function Dashboard() {
           {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
           {published.length === 0 && <EmptyState />}
         </Column>
-        <Column title="Archived" count={archived.length} accent="var(--text-muted)">
-          {archived.map(item => (
-            <div key={item.id} className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--surface)] transition-colors group">
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-[var(--text-secondary)] truncate leading-snug">{item.title}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded ${item.status === 'rejected' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-gray-100 text-[var(--text-muted)]'}`}>{item.status}</span>
-                  <span className="text-2xs text-[var(--text-muted)]">{item.type}</span>
-                  <span className="text-2xs text-[var(--text-muted)]">{ago(item.at)}</span>
-                </div>
-              </div>
-              <button
-                onClick={(e) => { e.stopPropagation(); data.requireAuth(() => item.type === 'topic' ? data.restoreTopic(item.id) : data.restoreDraft(item.id)); }}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--royal)] hover:text-white transition-colors flex-shrink-0 opacity-60 group-hover:opacity-100"
-                title="Restore">
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4" /></svg>
-              </button>
-            </div>
-          ))}
-          {archived.length === 0 && <EmptyState message="Nothing archived" />}
-        </Column>
+        {renderArchivedColumn(archived)}
       </div>
     );
   };
@@ -400,7 +379,7 @@ export function Dashboard() {
     const rawContent = item.content || item.summary || '';
     const isDraft = type === 'draft';
     const content = isDraft && rawContent ? extractDraftContent(rawContent) : rawContent;
-    const isBlog = item.channel === 'blog' || item.draft_type === 'blog';
+    const isBlog = isBlogItem(item);
 
     return (
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center" onClick={() => { setModal(null); setFeedbackText(''); }}>

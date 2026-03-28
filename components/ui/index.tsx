@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Topic, Draft } from '@/lib/supabase';
+import { Topic, Draft, isBlogItem } from '@/lib/supabase';
 import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief, extractDraftContent, dedup } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
@@ -127,7 +127,7 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
     'quick-tip': 'bg-[var(--sage-light)] text-[var(--sage)]',
     'hot-take': 'bg-[var(--red-light)] text-[var(--red)]',
   };
-  const isBlogDraft = d.channel === 'blog' || d.draft_type === 'blog';
+  const isBlogDraft = isBlogItem(d);
   const snippet = d.content ? (() => {
     const clean = extractDraftContent(d.content);
     return stripFrontmatter(clean).body.replace(/^#[^\n]+\n*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/\*(.+?)\*/g, '$1').trim().substring(0, 120);
@@ -181,6 +181,34 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// === ARCHIVED ITEM ROW ===
+export type ArchivedEntry = { id: string; type: 'topic' | 'draft'; title: string; status: string; at: number };
+
+export function ArchivedItemRow({ item, onRestore, requireAuth }: {
+  item: ArchivedEntry;
+  onRestore: (type: 'topic' | 'draft', id: string) => void;
+  requireAuth: (fn: () => void) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--surface)] transition-colors group">
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium text-[var(--text-secondary)] truncate leading-snug">{item.title}</p>
+        <div className="flex items-center gap-2 mt-1">
+          <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded ${item.status === 'rejected' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-gray-100 text-[var(--text-muted)]'}`}>{item.status}</span>
+          <span className="text-2xs text-[var(--text-muted)]">{item.type}</span>
+          <span className="text-2xs text-[var(--text-muted)]">{ago(item.at)}</span>
+        </div>
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); requireAuth(() => onRestore(item.type, item.id)); }}
+        className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--royal)] hover:text-white transition-colors flex-shrink-0 opacity-60 group-hover:opacity-100"
+        title="Restore">
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4" /></svg>
+      </button>
     </div>
   );
 }
