@@ -233,16 +233,15 @@ body {
     touch-action: manipulation;
     padding-left: 4px !important;
     padding-right: 4px !important;
-    padding-bottom: 68px !important;
     gap: 10px !important;
-    /* header ~48px + main padding 12px + bottom nav ~56px */
-    max-height: calc(100dvh - 80px) !important;
+    /* header ~48px + main padding ~24px + bottom nav ~60px */
+    max-height: calc(100dvh - 60px) !important;
   }
   .kanban-scroll > div {
     min-width: 82vw !important;
     width: 82vw !important;
     height: 100% !important;
-    max-height: calc(100dvh - 85px) !important;
+    max-height: calc(100dvh - 65px) !important;
     scroll-snap-align: center;
     flex-shrink: 0 !important;
   }
