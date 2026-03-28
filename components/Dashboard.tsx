@@ -424,7 +424,16 @@ export function Dashboard() {
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {type === 'draft' && content && (
+            {type === 'draft' && isCarouselItem(item) && (
+              <div className="flex flex-wrap gap-2 mt-3">
+                {item.carousel_pdf_url && <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="text-xs px-3.5 py-2 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-colors flex items-center gap-1.5">
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                  Download PDF
+                </a>}
+                {item.caption && <button onClick={() => handleCopy(item.caption)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--plum)] text-white font-semibold hover:opacity-90 transition-colors">Copy caption</button>}
+              </div>
+            )}
+            {type === 'draft' && !isCarouselItem(item) && content && (
               <div className="flex flex-wrap gap-2 mt-3">
                 <button onClick={() => handleCopy(content)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy content</button>
                 {item.caption && <button onClick={() => handleCopy(item.caption)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--plum)] text-white font-semibold hover:opacity-90 transition-colors">Copy caption</button>}
@@ -509,50 +518,42 @@ export function Dashboard() {
                 const slides = carousel.slides || [];
                 return (
                   <div className="space-y-3">
-                    {/* PDF download */}
-                    {item.carousel_pdf_url && (
-                      <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="flex items-center gap-2 px-4 py-3 bg-[var(--accent-light)] text-[var(--accent)] rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors border border-[var(--accent)]/10">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        Download PDF
-                      </a>
-                    )}
-                    {/* Slide previews */}
-                    <div className="space-y-2.5">
+                    {/* Slide previews — LinkedIn 4:5 ratio */}
+                    <div className="space-y-3">
                       {slides.map((slide: any, i: number) => {
                         const bgColors: Record<string, string> = {
-                          hook: 'var(--charcoal)', dark: 'var(--charcoal)', charcoal: '#252545',
-                          warm: '#FFF8F3', white: '#FFFFFF', coral: 'var(--accent)', cta: 'var(--accent)',
-                          stats: 'var(--charcoal)', bullets: 'var(--charcoal)',
+                          hook: '#1A1A2E', dark: '#1A1A2E', charcoal: '#252545',
+                          warm: '#FFF8F3', white: '#FFFFFF', coral: '#E87B35', cta: '#E87B35',
+                          stats: '#1A1A2E', bullets: '#1A1A2E',
                         };
                         const bg = slide.bg || (slide.type === 'hook' || slide.type === 'stats' ? 'dark' : slide.type === 'cta' ? 'coral' : i % 2 === 0 ? 'charcoal' : 'warm');
                         const isDark = bg === 'dark' || bg === 'charcoal' || bg === 'stats';
                         const isCoral = bg === 'coral' || slide.type === 'cta';
-                        const textColor = isDark || isCoral ? '#FFFFFF' : 'var(--charcoal)';
+                        const textColor = isDark || isCoral ? '#FFFFFF' : '#1A1A2E';
                         const bgColor = bgColors[bg] || bgColors[slide.type] || '#FFF8F3';
                         return (
-                          <div key={i} className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ backgroundColor: bgColor, color: textColor }}>
-                            {/* Orange top bar */}
-                            <div className="h-[3px] bg-[var(--accent)]" />
-                            <div className="p-4 md:p-5">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="text-2xs font-semibold uppercase tracking-wider opacity-50">Slide {i + 1} · {slide.type}</span>
-                                {slide.emoji && <span className="text-lg">{slide.emoji}</span>}
-                              </div>
+                          <div key={i} className="rounded-xl overflow-hidden border border-[var(--border)] relative" style={{ backgroundColor: bgColor, color: textColor, aspectRatio: '4/5' }}>
+                            {/* Top accent bar */}
+                            <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--accent)] z-10" />
+                            <div className="absolute inset-0 flex flex-col justify-center p-6 md:p-8">
+                              {/* Slide number badge */}
+                              <div className="absolute top-4 right-4 text-2xs font-semibold uppercase tracking-wider opacity-40">{i + 1}/{slides.length}</div>
+                              {slide.emoji && <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: isDark ? 'rgba(232,123,53,0.15)' : 'rgba(232,123,53,0.1)' }}>{slide.emoji}</div>}
                               {slide.type === 'hook' && (
                                 <>
-                                  {slide.label && <p className="text-2xs font-bold tracking-[3px] uppercase mb-2" style={{ color: 'var(--accent)' }}>{slide.label}</p>}
-                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg md:text-xl font-bold leading-tight mb-1" dangerouslySetInnerHTML={{ __html: (slide.title || '').replace(/<span class='highlight'>(.*?)<\/span>/g, `<span style="color: var(--accent)">$1</span>`) }} />
-                                  {slide.subtitle && <p className="text-sm opacity-50">{slide.subtitle}</p>}
+                                  {slide.label && <p className="text-2xs font-bold tracking-[3px] uppercase mb-3" style={{ color: '#E87B35' }}>{slide.label}</p>}
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-xl md:text-2xl font-black leading-tight mb-2" dangerouslySetInnerHTML={{ __html: (slide.title || '').replace(/<span class='highlight'>(.*?)<\/span>/g, '<span style="color: #E87B35">$1</span>') }} />
+                                  {slide.subtitle && <p className="text-sm opacity-50 leading-relaxed">{slide.subtitle}</p>}
                                 </>
                               )}
                               {slide.type === 'point' && (
                                 <>
-                                  <span style={{ fontFamily: "'Outfit', sans-serif", color: 'var(--accent)' }} className="text-3xl font-black">{slide.number}</span>
-                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-base font-bold mt-1 mb-1">{slide.title}</h3>
+                                  <span style={{ fontFamily: "'Outfit', sans-serif", color: '#E87B35' }} className="text-4xl font-black leading-none">{slide.number}</span>
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg font-bold mt-2 mb-2">{slide.title}</h3>
                                   <p className="text-sm opacity-60 leading-relaxed">{slide.body}</p>
                                   {slide.highlight && (
-                                    <div className="mt-2 p-2.5 rounded-lg text-xs" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'var(--charcoal)', color: isDark ? 'rgba(255,255,255,0.85)' : '#FFFFFF' }}>
-                                      {slide.highlight.icon && <span className="mr-1.5">{slide.highlight.icon}</span>}
+                                    <div className="mt-3 p-3 rounded-xl text-sm leading-relaxed" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : '#1A1A2E', color: isDark ? 'rgba(255,255,255,0.85)' : '#FFFFFF' }}>
+                                      {slide.highlight.icon && <span className="mr-2">{slide.highlight.icon}</span>}
                                       {slide.highlight.text}
                                     </div>
                                   )}
@@ -560,12 +561,12 @@ export function Dashboard() {
                               )}
                               {slide.type === 'stats' && (
                                 <>
-                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-base font-bold mb-2">{slide.title}</h3>
-                                  <div className="space-y-1.5">
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg font-bold mb-3">{slide.title}</h3>
+                                  <div className="space-y-2">
                                     {(slide.stats || []).map((s: any, j: number) => (
-                                      <div key={j} className="flex items-center gap-3 p-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-                                        <span style={{ fontFamily: "'Outfit', sans-serif", color: 'var(--accent)' }} className="text-xl font-black min-w-[60px]">{s.number}</span>
-                                        <span className="text-xs opacity-60">{s.label}</span>
+                                      <div key={j} className="flex items-center gap-4 p-3 rounded-xl" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                                        <span style={{ fontFamily: "'Outfit', sans-serif", color: '#E87B35' }} className="text-2xl font-black min-w-[70px]">{s.number}</span>
+                                        <span className="text-sm opacity-60">{s.label}</span>
                                       </div>
                                     ))}
                                   </div>
@@ -573,24 +574,28 @@ export function Dashboard() {
                               )}
                               {slide.type === 'bullets' && (
                                 <>
-                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-base font-bold mb-2">{slide.title}</h3>
-                                  <div className="space-y-1">
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg font-bold mb-3">{slide.title}</h3>
+                                  <div className="space-y-1.5">
                                     {(slide.items || []).map((b: any, j: number) => (
-                                      <div key={j} className="flex items-start gap-2 text-xs p-1.5 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
-                                        <span className="flex-shrink-0">{b.icon}</span>
-                                        <span className="opacity-75">{b.text}</span>
+                                      <div key={j} className="flex items-start gap-3 text-sm p-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                                        <span className="flex-shrink-0 text-base">{b.icon}</span>
+                                        <span className="opacity-75 leading-relaxed">{b.text}</span>
                                       </div>
                                     ))}
                                   </div>
                                 </>
                               )}
                               {slide.type === 'cta' && (
-                                <div className="text-center py-2">
-                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg font-bold mb-1">{slide.title}</h3>
-                                  {slide.subtitle && <p className="text-xs opacity-50 mb-3">{slide.subtitle}</p>}
-                                  {slide.button && <span className="inline-block px-4 py-2 rounded-lg text-xs font-bold" style={{ backgroundColor: isCoral ? '#FFFFFF' : 'var(--accent)', color: isCoral ? 'var(--accent)' : '#FFFFFF' }}>{slide.button}</span>}
+                                <div className="text-center">
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-xl font-bold mb-2">{slide.title}</h3>
+                                  {slide.subtitle && <p className="text-sm opacity-50 mb-4 leading-relaxed">{slide.subtitle}</p>}
+                                  {slide.button && <span className="inline-block px-6 py-3 rounded-xl text-sm font-bold" style={{ backgroundColor: isCoral ? '#FFFFFF' : '#E87B35', color: isCoral ? '#E87B35' : '#FFFFFF', boxShadow: '0 4px 15px rgba(0,0,0,0.15)' }}>{slide.button}</span>}
                                 </div>
                               )}
+                            </div>
+                            {/* Brand bar */}
+                            <div className="absolute bottom-3 right-4 flex items-center gap-1.5 z-10">
+                              <span style={{ fontFamily: "'Outfit', sans-serif", color: '#E87B35' }} className="text-2xs font-bold">AppletPod</span>
                             </div>
                           </div>
                         );
