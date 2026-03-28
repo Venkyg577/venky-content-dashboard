@@ -72,8 +72,8 @@ export type Run = {
 
 export type AgentTask = {
   id: string;
-  task_type: 'research' | 'draft' | 'revise';
-  agent: 'owl' | 'bee';
+  task_type: 'research' | 'draft' | 'revise' | 'blog_research' | 'blog_draft' | 'blog_revise';
+  agent: 'owl' | 'bee' | 'stork' | 'crane';
   ref_id: string;
   ref_title: string | null;
   payload: Record<string, any>;

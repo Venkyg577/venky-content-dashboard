@@ -127,25 +127,40 @@ export function useDashboardData() {
     }
 
     if (isBlog) {
-      await supabase.from('topics').update({ status: 'approved', stage: 'approved' }).eq('id', id);
-      const { data: existing } = await supabase.from('drafts').select('id, status').eq('topic', t.title).eq('channel', 'blog').neq('status', 'rejected').limit(1);
-      let draftId: string | null = null;
-      if (!existing || existing.length === 0) {
-        const { data: newDraft, error: draftErr } = await supabase.from('drafts').insert({
-          topic: t.title, channel: 'blog', draft_type: 'blog',
-          stage: 'drafted', status: 'pending', content: '', word_count: 0, created_at: Date.now()
-        }).select('id').single();
-        if (draftErr) { showToast('Draft creation failed'); return; }
-        draftId = newDraft?.id || null;
-      }
-      if (draftId) {
+      // BLOG SCOUTED → RESEARCHED: trigger Stork research
+      if (t.stage === 'scouted') {
+        await supabase.from('topics').update({ status: 'pending', stage: 'researched' }).eq('id', id);
         await supabase.from('agent_tasks').insert({
-          task_type: 'draft', agent: 'bee', ref_id: draftId, ref_title: t.title,
-          payload: { topic_title: t.title, topic_summary: t.summary || '' },
+          task_type: 'blog_research', agent: 'stork', ref_id: id, ref_title: t.title,
+          payload: { topic_title: t.title, topic_url: t.url, topic_source: t.source },
         });
+        notifySlack(SLACK_CHANNEL_BLOG, `Blog topic sent to Stork for research: ${t.title}`);
+        showToast('Sent to Stork for research'); load(); return;
       }
-      notifySlack(SLACK_CHANNEL_AIMY, `Blog approved: ${t.title}`);
-      showToast('Approved'); load(); return;
+      // BLOG RESEARCHED → DRAFT: trigger Crane drafting
+      if (t.stage === 'researched') {
+        const { data: existing } = await supabase.from('drafts').select('id').eq('topic', t.title).eq('channel', 'blog').neq('status', 'rejected').limit(1);
+        let draftId: string | null = null;
+        if (!existing || existing.length === 0) {
+          const { data: newDraft, error: draftErr } = await supabase.from('drafts').insert({
+            topic: t.title, channel: 'blog', draft_type: 'blog',
+            stage: 'drafted', status: 'pending', content: '', word_count: 0, created_at: Date.now()
+          }).select('id').single();
+          if (draftErr) { showToast('Draft creation failed'); return; }
+          draftId = newDraft?.id || null;
+        } else {
+          draftId = existing[0].id;
+        }
+        await supabase.from('topics').update({ status: 'archived' }).eq('id', id);
+        if (draftId) {
+          await supabase.from('agent_tasks').insert({
+            task_type: 'blog_draft', agent: 'crane', ref_id: draftId, ref_title: t.title,
+            payload: { topic_title: t.title, topic_summary: t.summary || '' },
+          });
+        }
+        notifySlack(SLACK_CHANNEL_BLOG, `Blog research approved, sent to Crane for drafting: ${t.title}`);
+        showToast('Sent to Crane for drafting'); load(); return;
+      }
     }
 
     // Fallback
@@ -210,14 +225,18 @@ export function useDashboardData() {
   const reviseDraft = async (id: string, fb: string) => {
     if (!fb.trim()) return;
     const draft = drafts.find(d => d.id === id);
+    const isBlogDraft = draft?.channel === 'blog' || draft?.draft_type === 'blog';
+    const agent = isBlogDraft ? 'crane' : 'bee';
+    const taskType = isBlogDraft ? 'blog_revise' : 'revise';
+    const slackChannel = isBlogDraft ? SLACK_CHANNEL_BLOG : SLACK_CHANNEL_AIMY;
     await supabase.from('drafts').update({ status: 'revision', revised: true, revised_at: Date.now() }).eq('id', id);
     await supabase.from('feedback').insert({ item_id: id, item_type: 'draft', action: 'revise', comment: fb });
     await supabase.from('agent_tasks').insert({
-      task_type: 'revise', agent: 'bee', ref_id: id, ref_title: draft?.topic || '',
+      task_type: taskType, agent, ref_id: id, ref_title: draft?.topic || '',
       payload: { feedback: fb, current_content: draft?.content || '' },
     });
-    notifySlack(SLACK_CHANNEL_AIMY, `Revision requested: ${fb}`);
-    showToast('Sent to Bee for revision'); load();
+    notifySlack(slackChannel, `Revision requested: ${fb}`);
+    showToast(`Sent to ${isBlogDraft ? 'Crane' : 'Bee'} for revision`); load();
   };
 
   const rejectItem = async (type: 'topic' | 'draft', item: any, feedbackText: string) => {
@@ -236,14 +255,18 @@ export function useDashboardData() {
     if (type === 'topic') {
       await supabase.from('topics').update({ status: 'revision' }).eq('id', item.id);
     } else {
+      const isBlogDraft = item.channel === 'blog' || item.draft_type === 'blog';
+      const agent = isBlogDraft ? 'crane' : 'bee';
+      const taskType = isBlogDraft ? 'blog_revise' : 'revise';
       await supabase.from('drafts').update({ status: 'revision' }).eq('id', item.id);
       await supabase.from('agent_tasks').insert({
-        task_type: 'revise', agent: 'bee', ref_id: item.id, ref_title: item.topic || item.title || '',
+        task_type: taskType, agent, ref_id: item.id, ref_title: item.topic || item.title || '',
         payload: { feedback: feedbackText, current_content: item.content || '' },
       });
     }
     await supabase.from('feedback').insert({ item_id: item.id, item_type: type, action: 'revision', comment: feedbackText });
-    notifySlack(SLACK_CHANNEL_AIMY, `Revision requested: ${item.topic || item.title}\nFeedback: ${feedbackText}`);
+    const slackChannel = (item.channel === 'blog') ? SLACK_CHANNEL_BLOG : SLACK_CHANNEL_AIMY;
+    notifySlack(slackChannel, `Revision requested: ${item.topic || item.title}\nFeedback: ${feedbackText}`);
     showToast('Sent for revision'); load();
   };
 

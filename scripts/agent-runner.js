@@ -92,6 +92,66 @@ function buildPrompt(task) {
         ``,
         `Address the feedback specifically. Keep Venky's voice per VOICE.md.`,
       ].filter(Boolean).join('\n');
+
+    // === BLOG AGENTS (Stork research, Crane draft/revise) ===
+
+    case 'blog_research':
+      return [
+        `Research this blog topic. Follow your AGENTS.md research process fully.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        task.payload.topic_url ? `Source URL: ${task.payload.topic_url}` : '',
+        task.payload.topic_source ? `Found via: ${task.payload.topic_source}` : '',
+        ``,
+        `Topic ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After researching, update the topic in Supabase:`,
+        `- Set summary = your full research brief`,
+        `- Set status = 'approved'`,
+        ``,
+        `Save the brief to your workspace as per AGENTS.md.`,
+        `Use the Supabase credentials from your workspace tools.`,
+      ].filter(Boolean).join('\n');
+
+    case 'blog_draft':
+      return [
+        `Write a blog post for appletpod.com. Follow your AGENTS.md fully.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        task.payload.topic_summary ? `Research brief:\n${task.payload.topic_summary}` : 'No research brief — check content-bank for briefs on this topic.',
+        ``,
+        `Draft ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After writing, update the draft in Supabase:`,
+        `- Set content = full MDX blog post`,
+        `- Set word_count = actual word count`,
+        `- Set status = 'approved'`,
+        ``,
+        `1500-3000 words. MDX format. Follow your writing procedure.`,
+      ].filter(Boolean).join('\n');
+
+    case 'blog_revise':
+      return [
+        `Revise this blog post based on Venky's feedback. Follow your AGENTS.md.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        ``,
+        `Current draft:`,
+        `---`,
+        task.payload.current_content?.substring(0, 5000) || '(no content)',
+        `---`,
+        ``,
+        `Venky's feedback: "${task.payload.feedback}"`,
+        ``,
+        `Draft ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After revising, update the draft in Supabase:`,
+        `- Set content = revised MDX blog post`,
+        `- Set word_count = actual word count`,
+        `- Set status = 'approved'`,
+        ``,
+        `Address the feedback specifically. Maintain blog quality standards.`,
+      ].filter(Boolean).join('\n');
   }
 }
 
@@ -163,7 +223,7 @@ async function processTask(task) {
     // The agent should update Supabase directly (it has the credentials in its workspace).
     // But as a fallback, we also update from here if the agent's output contains the content.
     // Check if the agent already updated the record:
-    if (task.task_type === 'research') {
+    if (task.task_type === 'research' || task.task_type === 'blog_research') {
       const { data: topic } = await sb.from('topics').select('summary, status').eq('id', task.ref_id).single();
       if (!topic?.summary || topic.status !== 'approved') {
         // Agent didn't update Supabase directly — use the output as the summary
@@ -175,7 +235,7 @@ async function processTask(task) {
       } else {
         log(`   Agent updated Supabase directly ✓`);
       }
-    } else if (task.task_type === 'draft' || task.task_type === 'revise') {
+    } else if (task.task_type === 'draft' || task.task_type === 'revise' || task.task_type === 'blog_draft' || task.task_type === 'blog_revise') {
       const { data: draft } = await sb.from('drafts').select('content, status').eq('id', task.ref_id).single();
       if (!draft?.content || draft.content === '' || draft.status !== 'approved') {
         log(`   Agent didn't update Supabase directly, writing result as content`);

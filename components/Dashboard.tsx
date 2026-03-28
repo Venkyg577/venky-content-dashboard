@@ -231,34 +231,62 @@ export function Dashboard() {
 
   // === BLOGS TAB ===
   const renderBlogs = () => {
-    const research = sortTopics(data.topics.filter(t => t.channel === "blog").filter(t => t.status !== 'archived' && t.stage !== 'approved'));
-    const drafted = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'drafted' && d.status !== 'rejected'));
-    const approved = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'ready_to_post' || d.status === 'approved'));
-    const published = sortDrafts(data.drafts.filter(d => d.channel === "blog").filter(d => d.stage === 'published'));
+    const blogFilter = (t: Topic) => t.channel === 'blog' || t.channel === 'both';
+    const blogDraftFilter = (d: Draft) => d.channel === 'blog' || d.draft_type === 'blog';
+    const scouted = sortTopics(data.topics.filter(blogFilter).filter(t => t.stage === 'scouted' && t.status !== 'archived' && t.status !== 'rejected'));
+    const research = sortTopics(data.topics.filter(blogFilter).filter(t => t.stage === 'researched' && t.status !== 'archived' && t.status !== 'rejected'));
+    const drafted = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.stage === 'drafted' && d.status !== 'rejected' && d.status !== 'archived'));
+    const ready = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.stage === 'ready_to_post'));
+    const published = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.stage === 'published'));
+    const archivedTopics = sortTopics(data.topics.filter(blogFilter).filter(t => t.status === 'archived' || t.status === 'rejected'));
+    const archivedDrafts = sortDrafts(data.drafts.filter(blogDraftFilter).filter(d => d.status === 'archived' || d.status === 'rejected'));
+    const archived = [
+      ...archivedTopics.map(t => ({ id: t.id, type: 'topic' as const, title: t.title, status: t.status, at: t.revised_at || t.discovered_at })),
+      ...archivedDrafts.map(d => ({ id: d.id, type: 'draft' as const, title: d.topic, status: d.status, at: d.revised_at || d.created_at })),
+    ].sort((a, b) => (b.at || 0) - (a.at || 0));
     return (
-      <div className="space-y-4 h-full flex flex-col fade-in">
-        <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none flex-1 h-full">
-          <Column title="Research" count={research.length} accent="var(--royal)">
-            {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
-            {research.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Drafts" count={drafted.length} accent="var(--gold)">
-            {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
-            {drafted.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Approved" count={approved.length} accent="var(--sage)">
-            {approved.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
-            {approved.length === 0 && <EmptyState />}
-          </Column>
-          <Column title="Published" count={published.length} accent="var(--plum)">
-            {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
-            {published.length === 0 && <EmptyState />}
-          </Column>
-        </div>
-        <div className="bg-white rounded-xl p-4 text-xs text-[var(--text-secondary)] border border-[var(--border)] flex-shrink-0 flex items-center gap-3 shadow-sm">
-          <span className="text-lg">🔄</span>
-          <span><strong className="text-[var(--text-primary)]">Pipeline:</strong> Stork researches → Crane writes → You approve → Pelican publishes</span>
-        </div>
+      <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none fade-in h-full">
+        <Column title="Scouted" count={scouted.length} accent="var(--royal)">
+          {scouted.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {scouted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Research" count={research.length} accent="var(--plum)">
+          {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {research.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Drafted" count={drafted.length} accent="var(--gold)">
+          {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {drafted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Ready to post" count={ready.length} accent="var(--sage)">
+          {ready.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
+          {ready.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Published" count={published.length} accent="#e87b35">
+          {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
+          {published.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Archived" count={archived.length} accent="var(--text-muted)">
+          {archived.map(item => (
+            <div key={item.id} className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-[var(--border)] bg-white hover:bg-[var(--surface)] transition-colors group">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-[var(--text-secondary)] truncate leading-snug">{item.title}</p>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-2xs font-semibold px-1.5 py-0.5 rounded ${item.status === 'rejected' ? 'bg-[var(--red-light)] text-[var(--red)]' : 'bg-gray-100 text-[var(--text-muted)]'}`}>{item.status}</span>
+                  <span className="text-2xs text-[var(--text-muted)]">{item.type}</span>
+                  <span className="text-2xs text-[var(--text-muted)]">{ago(item.at)}</span>
+                </div>
+              </div>
+              <button
+                onClick={(e) => { e.stopPropagation(); data.requireAuth(() => item.type === 'topic' ? data.restoreTopic(item.id) : data.restoreDraft(item.id)); }}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-[var(--surface)] text-[var(--text-muted)] hover:bg-[var(--royal)] hover:text-white transition-colors flex-shrink-0 opacity-60 group-hover:opacity-100"
+                title="Restore">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a5 5 0 015 5v2M3 10l4-4m-4 4l4 4" /></svg>
+              </button>
+            </div>
+          ))}
+          {archived.length === 0 && <EmptyState message="Nothing archived" />}
+        </Column>
       </div>
     );
   };
@@ -479,17 +507,42 @@ export function Dashboard() {
               <div dangerouslySetInnerHTML={{ __html: renderMd(content) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />
             )}
 
-            {isBlog && content && content.length >= 200 && (() => {
+            {isBlog && content && content.length >= 100 && (() => {
               const { body: blogBody, meta: blogMeta } = stripFrontmatter(content);
               const blogTitle = blogMeta.title || item.topic || item.title;
+              const blogCategory = blogMeta.cluster || blogMeta.category || 'Blog';
+              const wordCount = item.word_count || content.split(/\s+/).length;
+              const readTime = Math.max(1, Math.round(wordCount / 250));
               return (
-                <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden">
-                  <div className="h-[3px]" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
-                  <div className="px-5 md:px-6 pt-6 pb-4 border-b border-[var(--border)]">
-                    <h1 className="font-heading text-xl md:text-2xl font-bold leading-tight text-[var(--charcoal)] mb-2">{blogTitle}</h1>
-                    {blogMeta.description && <p className="text-sm md:text-base text-[var(--text-muted)]">{blogMeta.description}</p>}
+                <div className="rounded-xl border border-[var(--warm-dark)] overflow-hidden bg-white">
+                  {/* Accent gradient line */}
+                  <div className="h-[2px]" style={{ background: 'linear-gradient(to right, transparent, var(--accent), transparent)' }} />
+                  {/* Blog header — appletpod style */}
+                  <div className="px-5 md:px-8 pt-7 pb-5 border-b border-[var(--warm-dark)]">
+                    <span className="inline-block text-sm font-medium px-3 py-1 rounded-full mb-4" style={{ color: 'rgba(232, 123, 53, 0.8)', backgroundColor: 'rgba(232, 123, 53, 0.08)' }}>{blogCategory}</span>
+                    <h1 style={{ fontFamily: "'Outfit', sans-serif", color: 'var(--charcoal)' }} className="text-2xl md:text-3xl font-bold leading-tight tracking-tight mb-3">{blogTitle}</h1>
+                    {blogMeta.description && <p className="text-base leading-relaxed mb-4" style={{ color: 'rgba(26, 26, 46, 0.5)' }}>{blogMeta.description}</p>}
+                    <div className="flex items-center gap-3 text-sm" style={{ color: 'rgba(26, 26, 46, 0.4)' }}>
+                      <span><span className="font-medium" style={{ color: 'rgba(26, 26, 46, 0.6)' }}>Venky</span></span>
+                      <span>·</span>
+                      <span>{wordCount} words</span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        {readTime} min read
+                      </span>
+                    </div>
                   </div>
-                  <div className="px-5 md:px-6 py-5 text-sm leading-relaxed text-[var(--text-secondary)]" dangerouslySetInnerHTML={{ __html: renderMd(blogBody) }} />
+                  {/* Blog body — appletpod prose */}
+                  <div className="px-5 md:px-8 py-6 prose-appletpod" dangerouslySetInnerHTML={{ __html: renderMd(blogBody) }} />
+                  {/* Keywords */}
+                  {blogMeta.keywords && (
+                    <div className="px-5 md:px-8 pb-6 pt-4 border-t border-[var(--warm-dark)] flex flex-wrap gap-2">
+                      {blogMeta.keywords.split(',').map((kw: string, i: number) => (
+                        <span key={i} className="text-sm px-3 py-1.5 rounded-full" style={{ color: 'rgba(26, 26, 46, 0.4)', backgroundColor: 'var(--warm)' }}>{kw.trim()}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })()}
