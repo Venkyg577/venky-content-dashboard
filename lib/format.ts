@@ -33,23 +33,35 @@ export const renderMd = (text: string) => {
     .replace(/\n/g, '<br/>');
 };
 
+// Aggressively strip agent thinking/process narration from any text
+const stripThinking = (text: string): string => {
+  if (!text) return '';
+  const lines = text.split('\n');
+  return lines.filter(line => {
+    const t = line.trim();
+    if (!t) return true; // keep blank lines
+    // Kill any line that sounds like agent narration
+    if (/^(let me |i'll |i will |now let me |now i |while waiting|the fetch|i need to|i should|i'm going to|looking at|searching for|fetching|checking|reading |processing)/i.test(t)) return false;
+    if (/^(first,? let|next,? let|finally,? let|let's |alright|ok,? |sure,? |great,? |good!|excellent!|perfect)/i.test(t)) return false;
+    if (/^(waiting for|polling|retrying|attempting|running|executing|calling|invoking)/i.test(t)) return false;
+    if (/^(reddit content|let me try|let me also|let me compile|let me wait|let me check|let me search|let me fetch|let me use)/i.test(t)) return false;
+    if (/^(now let me|i found|from my earlier|the (search|scrape|request|call) (didn't|failed|returned|timed out))/i.test(t)) return false;
+    // Meta lines from agent summaries
+    if (/^(word count|summary|topic|approach|voice|structure|saved to|supabase|draft written|ready for venky)/i.test(t)) return false;
+    // Repeated colon-terminated labels that are agent meta
+    if (/^(status|result|output|task|ref_id|payload)\s*:/i.test(t)) return false;
+    return true;
+  }).join('\n')
+    // Collapse 3+ blank lines to 2
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+};
+
 // Parse structured research brief into sections, stripping agent thinking/process narration
 export const parseResearchBrief = (text: string): { sections: { title: string; content: string }[]; raw: string } => {
   if (!text) return { sections: [], raw: '' };
 
-  // Strip thinking/process lines that agents leak into output
-  const thinkingPatterns = [
-    /^(Let me |I'll |I will |Now let me |While waiting|Let me check|Let me search|Let me fetch|The fetch didn't|I need to|I should|I'm going to|Looking at|Searching for|Fetching|Checking|Reading|Processing)/i,
-    /^(Now I|First,? let me|Next,? let me|Finally,? let me|Let's |Alright|OK,? |Sure,? |Great,? )/i,
-    /^(Waiting for|Polling|Retrying|Attempting|Running|Executing|Calling|Invoking)/i,
-  ];
-
-  const lines = text.split('\n');
-  const cleanedLines = lines.filter(line => {
-    const trimmed = line.trim();
-    return !thinkingPatterns.some(p => p.test(trimmed));
-  });
-  const cleaned = cleanedLines.join('\n').trim();
+  const cleaned = stripThinking(text);
 
   // Parse markdown ## sections
   const sectionRegex = /^##\s+(.+)$/gm;
@@ -82,65 +94,35 @@ export const parseResearchBrief = (text: string): { sections: { title: string; c
 export const extractDraftContent = (text: string): string => {
   if (!text) return '';
 
-  // Strategy 1: Find content between double newline blocks that looks like a post
-  // The actual post is usually the longest contiguous block of non-thinking text
-  const thinkingPatterns = [
-    /^(I'll |Let me |Now let me |Now I|While waiting|Let me |The fetch|I need to|I should|I'm going to)/i,
-    /^(First,? let me|Next,? let me|Finally,? let me|Alright|Sure,? |Great,? )/i,
-    /^(Waiting for|Polling|Retrying|Attempting|Running|Executing|Calling|Invoking)/i,
-    /^(Word count:|Summary:|Topic:|Approach:|Voice:|Structure:|Saved to:|Supabase:|Draft written|Ready for)/i,
-    /^(The post:|Here's the post|Here is the post)/i,
-  ];
+  // First strip all thinking lines
+  const cleaned = stripThinking(text);
 
-  const lines = text.split('\n');
-  let bestBlock: string[] = [];
-  let currentBlock: string[] = [];
-  let inPost = false;
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    const isThinking = thinkingPatterns.some(p => p.test(trimmed));
-    const isMeta = /^(Word count|Summary|Topic|Approach|Voice|Structure|Saved to|Supabase|Draft written|Ready for):/i.test(trimmed);
-
-    if (isThinking || isMeta) {
-      // End of a content block
-      if (currentBlock.length > bestBlock.length) {
-        bestBlock = [...currentBlock];
-      }
-      currentBlock = [];
-      inPost = false;
-      continue;
+  // For drafts, find the longest contiguous block of real content
+  // (the actual post is usually the biggest chunk between meta/narration)
+  const blocks = cleaned.split(/\n{3,}/);
+  let best = '';
+  for (const block of blocks) {
+    const trimmed = block.trim();
+    // Skip blocks that are just meta labels or very short
+    if (trimmed.length < 50) continue;
+    if (/^(the post|here'?s the|here is the)/i.test(trimmed)) continue;
+    if (trimmed.length > best.length) {
+      best = trimmed;
     }
-
-    // Skip "The post:" type headers
-    if (/^the post:?\s*$/i.test(trimmed)) continue;
-
-    // Start collecting content
-    currentBlock.push(line);
-    if (trimmed.length > 0) inPost = true;
   }
 
-  // Check last block
-  if (currentBlock.length > bestBlock.length) {
-    bestBlock = [...currentBlock];
-  }
-
-  const extracted = bestBlock.join('\n').trim();
-
-  // If we got a reasonable post (>80 chars), use it. Otherwise return cleaned full text.
-  if (extracted.length > 80) return extracted;
-
-  // Fallback: strip thinking lines and return the rest
-  return lines.filter(line => {
-    const trimmed = line.trim();
-    return !thinkingPatterns.some(p => p.test(trimmed));
-  }).join('\n').trim();
+  return best || cleaned;
 };
 
 // Detect if content still has agent thinking/process narration
 export const hasThinkingContent = (text: string): boolean => {
   if (!text) return false;
-  const indicators = ['Let me ', "I'll ", 'Now let me ', 'Let me fetch', 'Let me search', 'The fetch didn\'t'];
+  const indicators = [
+    'Let me ', "I'll ", 'Now let me ', 'Let me fetch', 'Let me search',
+    'The fetch didn\'t', 'Excellent!', 'Good!', 'Reddit content is being blocked',
+    'Let me try', 'Let me compile', 'Let me also', 'Let me wait',
+    'I found', 'From my earlier', 'Let me check',
+  ];
   const count = indicators.filter(i => text.includes(i)).length;
   return count >= 2;
 };
