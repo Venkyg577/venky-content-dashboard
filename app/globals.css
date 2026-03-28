@@ -230,31 +230,31 @@ body {
     overflow-x: auto !important;
     overflow-y: hidden !important;
     scroll-snap-type: x proximity;
-    touch-action: pan-x;
+    touch-action: manipulation;
     padding-left: 4px !important;
     padding-right: 4px !important;
-    padding-bottom: 70px !important;
+    padding-bottom: 68px !important;
     gap: 10px !important;
-    /* Account for header (~52px) + tab nav (~44px) + padding + bottom nav (~60px) */
-    max-height: calc(100dvh - 170px) !important;
+    /* header ~48px + main padding 12px + bottom nav ~56px + safe area */
+    max-height: calc(100dvh - 120px) !important;
   }
   .kanban-scroll > div {
     min-width: 82vw !important;
     width: 82vw !important;
     height: 100% !important;
-    max-height: calc(100dvh - 180px) !important;
+    max-height: calc(100dvh - 130px) !important;
     scroll-snap-align: center;
     flex-shrink: 0 !important;
   }
-  /* Card scroll area: isolate vertical scroll from horizontal snap */
+  /* Card scroll area: vertical scroll inside columns */
   .kanban-scroll > div > div:last-child {
     flex: 1 !important;
     min-height: 0 !important;
     overflow-y: auto !important;
-    overscroll-behavior: contain;
-    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    touch-action: manipulation;
   }
-  /* Disable card lift on mobile — prevents scroll jank */
+  /* Disable card lift on mobile */
   .card-hover:hover {
     transform: none !important;
     box-shadow: none !important;
