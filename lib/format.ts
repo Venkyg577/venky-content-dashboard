@@ -33,98 +33,158 @@ export const renderMd = (text: string) => {
     .replace(/\n/g, '<br/>');
 };
 
-// Aggressively strip agent thinking/process narration from any text
-const stripThinking = (text: string): string => {
-  if (!text) return '';
-  const lines = text.split('\n');
-  return lines.filter(line => {
-    const t = line.trim();
-    if (!t) return true; // keep blank lines
-    // Kill any line that sounds like agent narration
-    if (/^(let me |i'll |i will |now let me |now i |while waiting|the fetch|i need to|i should|i'm going to|looking at|searching for|fetching|checking|reading |processing)/i.test(t)) return false;
-    if (/^(first,? let|next,? let|finally,? let|let's |alright|ok,? |sure,? |great,? |good!|excellent!|perfect)/i.test(t)) return false;
-    if (/^(waiting for|polling|retrying|attempting|running|executing|calling|invoking)/i.test(t)) return false;
-    if (/^(reddit content|let me try|let me also|let me compile|let me wait|let me check|let me search|let me fetch|let me use)/i.test(t)) return false;
-    if (/^(now let me|i found|from my earlier|the (search|scrape|request|call) (didn't|failed|returned|timed out))/i.test(t)) return false;
-    // Meta lines from agent summaries
-    if (/^(word count|summary|topic|approach|voice|structure|saved to|supabase|draft written|ready for venky)/i.test(t)) return false;
-    // Repeated colon-terminated labels that are agent meta
-    if (/^(status|result|output|task|ref_id|payload)\s*:/i.test(t)) return false;
-    return true;
-  }).join('\n')
-    // Collapse 3+ blank lines to 2
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
+// ---- Research Brief Parser ----
+// Strategy: WHITELIST good content sections by name, ignore everything else.
+// Agent output is too unpredictable to blacklist — instead we extract only
+// the named research sections we care about.
+
+// Section names we want to keep (matched loosely)
+const GOOD_SECTIONS: { pattern: RegExp; label: string }[] = [
+  { pattern: /key (research )?(?:findings|highlights)/i, label: 'Key Findings' },
+  { pattern: /ai content trap|problem|the .+ validated/i, label: 'Key Findings' },
+  { pattern: /what ai should|should actually/i, label: 'What AI Should Do' },
+  { pattern: /source|evidence/i, label: 'Sources & Evidence' },
+  { pattern: /industry context|industry|context|landscape/i, label: 'Industry Context' },
+  { pattern: /venky.?s (direct )?angle|angle/i, label: "Venky's Angle" },
+  { pattern: /competitor/i, label: 'Competitor Landscape' },
+  { pattern: /data highlight|key (data|stat)/i, label: 'Data Highlights' },
+  { pattern: /post (angle|style)|recommended/i, label: 'Post Angles' },
+  { pattern: /topic tier/i, label: 'Topic Tier' },
+];
+
+// Section names to REJECT (agent meta, not research)
+const BAD_SECTIONS: RegExp[] = [
+  /research (complete|deliverables?|status)/i,
+  /supabase|update (in progress|status)/i,
+  /three topics|topics researched/i,
+  /full research brief saved/i,
+  /completion summary/i,
+];
+
+// Is this line agent narration / junk?
+const isJunkLine = (line: string): boolean => {
+  const t = line.trim();
+  if (!t) return false;
+  // Agent thinking
+  if (/^(let me |i'll |i will |now let me |now i[' ]|while waiting|i need to|i should|i'm going to)/i.test(t)) return true;
+  if (/^(first,? let|next,? let|finally,? let|let's |alright|ok,? |sure,? |great,? |good!|excellent!|perfect)/i.test(t)) return true;
+  if (/^(waiting for|polling|retrying|attempting|running|executing|calling|invoking)/i.test(t)) return true;
+  if (/^(reddit content|let me try|let me also|let me compile|let me wait|let me check|let me search|let me fetch|let me use)/i.test(t)) return true;
+  if (/^(now let me|i found|from my earlier|the (search|scrape|request|call) (didn't|failed|returned|timed out))/i.test(t)) return true;
+  // File paths, IDs, status meta
+  if (/^\/data\/\.openclaw\//i.test(t)) return true;
+  if (/^(topic id|status|summary field|setting to|ref_id|payload|result|output)\s*:/i.test(t)) return true;
+  if (/^(word count|saved to|supabase|draft written|ready for venky)/i.test(t)) return true;
+  // Emoji status lines
+  if (/^✅\s*(research complete|corporate training|authoring tool|ai content|topics researched)/i.test(t)) return true;
+  // Numbered deliverables like "1. Full Research Brief Saved:"
+  if (/^\d+\.\s*(full research brief|supabase update)/i.test(t)) return true;
+  return false;
 };
 
-// Parse structured research brief into sections, stripping agent thinking/process narration
+// Parse research brief: extract named sections, strip junk
 export const parseResearchBrief = (text: string): { sections: { title: string; content: string }[]; raw: string } => {
   if (!text) return { sections: [], raw: '' };
 
-  const cleaned = stripThinking(text);
+  // Split text into header:content blocks. Headers can be:
+  // "## Title", "**Title:**", "Title:" (bold or plain, at line start)
+  const headerRegex = /^(?:#{1,3}\s+|\*\*)?(.+?)(?:\*\*)?:?\s*$/;
+  const lines = text.split('\n');
 
-  // Parse markdown ## sections
-  const sectionRegex = /^##\s+(.+)$/gm;
-  const sections: { title: string; content: string }[] = [];
-  let match;
-  const matches: { title: string; index: number }[] = [];
+  // Collect all sections with their content
+  const rawSections: { header: string; lines: string[] }[] = [];
+  let current: { header: string; lines: string[] } | null = null;
 
-  while ((match = sectionRegex.exec(cleaned)) !== null) {
-    matches.push({ title: match[1].trim(), index: match.index + match[0].length });
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Detect section headers: "## Key Findings", "**Key Findings:**", "Key Findings:", "The AI Content Trap Validated:"
+    const isHeader = (
+      /^#{1,3}\s+/.test(trimmed) ||
+      (/^\*\*[^*]+\*\*:?\s*$/.test(trimmed) && trimmed.length < 80) ||
+      (/^[A-Z][^.!?]{5,60}:$/.test(trimmed))
+    );
+
+    if (isHeader) {
+      const cleanHeader = trimmed.replace(/^#{1,3}\s+/, '').replace(/\*\*/g, '').replace(/:$/, '').trim();
+      current = { header: cleanHeader, lines: [] };
+      rawSections.push(current);
+    } else if (current) {
+      current.lines.push(line);
+    }
+    // Lines before any header are discarded (usually narration)
   }
 
-  for (let i = 0; i < matches.length; i++) {
-    const start = matches[i].index;
-    const end = i + 1 < matches.length ? cleaned.lastIndexOf('##', matches[i + 1].index) : cleaned.length;
-    const content = cleaned.substring(start, end).trim();
-    if (content) {
-      sections.push({ title: matches[i].title, content });
+  // Now filter: keep only sections that match GOOD_SECTIONS, skip BAD_SECTIONS
+  const sections: { title: string; content: string }[] = [];
+  const seen = new Set<string>(); // deduplicate by label
+
+  for (const sec of rawSections) {
+    // Skip bad sections
+    if (BAD_SECTIONS.some(p => p.test(sec.header))) continue;
+
+    // Match to a good section
+    const match = GOOD_SECTIONS.find(g => g.pattern.test(sec.header));
+    const label = match?.label || null;
+
+    // If it doesn't match any known good section, check if it has substantial content
+    // (sub-sections under a good parent are ok, standalone unknown sections are skipped)
+    if (!label) continue;
+    if (seen.has(label)) continue; // skip duplicates (agent repeats entire output)
+
+    // Clean the content lines: remove junk, keep substance
+    const cleanLines = sec.lines.filter(l => !isJunkLine(l));
+    const content = cleanLines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+
+    if (content.length > 20) {
+      sections.push({ title: label, content });
+      seen.add(label);
     }
   }
 
-  // If no sections found, treat the whole thing as one section
-  if (sections.length === 0 && cleaned.length > 0) {
-    sections.push({ title: 'Research Brief', content: cleaned });
+  // Build a clean raw version from extracted sections
+  const raw = sections.map(s => `## ${s.title}\n${s.content}`).join('\n\n');
+
+  // If nothing matched (unstructured output), do basic line-level cleanup as fallback
+  if (sections.length === 0) {
+    const fallback = lines.filter(l => !isJunkLine(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (fallback.length > 50) {
+      sections.push({ title: 'Research Brief', content: fallback });
+    }
+    return { sections, raw: fallback };
   }
 
-  return { sections, raw: cleaned };
+  return { sections, raw };
 };
 
-// Extract the actual post/draft content from agent output that contains thinking narration
+// Extract the actual post/draft content from agent output
 export const extractDraftContent = (text: string): string => {
   if (!text) return '';
 
-  // First strip all thinking lines
-  const cleaned = stripThinking(text);
+  // Strip junk lines, then find the longest contiguous content block
+  const lines = text.split('\n');
+  const cleaned = lines.filter(l => !isJunkLine(l)).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
-  // For drafts, find the longest contiguous block of real content
-  // (the actual post is usually the biggest chunk between meta/narration)
+  // Split into blocks, pick the longest one (the actual post)
   const blocks = cleaned.split(/\n{3,}/);
   let best = '';
   for (const block of blocks) {
     const trimmed = block.trim();
-    // Skip blocks that are just meta labels or very short
     if (trimmed.length < 50) continue;
-    if (/^(the post|here'?s the|here is the)/i.test(trimmed)) continue;
-    if (trimmed.length > best.length) {
-      best = trimmed;
-    }
+    // Skip meta headers
+    if (/^(the post|here'?s the|here is the|✅|research|topic|approach|structure)/i.test(trimmed)) continue;
+    if (trimmed.length > best.length) best = trimmed;
   }
 
   return best || cleaned;
 };
 
-// Detect if content still has agent thinking/process narration
+// Detect if content has agent thinking/process narration
 export const hasThinkingContent = (text: string): boolean => {
   if (!text) return false;
-  const indicators = [
-    'Let me ', "I'll ", 'Now let me ', 'Let me fetch', 'Let me search',
-    'The fetch didn\'t', 'Excellent!', 'Good!', 'Reddit content is being blocked',
-    'Let me try', 'Let me compile', 'Let me also', 'Let me wait',
-    'I found', 'From my earlier', 'Let me check',
-  ];
-  const count = indicators.filter(i => text.includes(i)).length;
-  return count >= 2;
+  const lines = text.split('\n');
+  const junkCount = lines.filter(l => isJunkLine(l)).length;
+  return junkCount >= 3;
 };
 
 export const stripFrontmatter = (text: string): { body: string; meta: Record<string, string> } => {
