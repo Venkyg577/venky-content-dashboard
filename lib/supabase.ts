@@ -77,9 +77,12 @@ export const isBlogItem = (item: { channel?: string; draft_type?: string }) =>
 export const isBlogTopic = (t: { channel?: string }) =>
   t.channel === 'blog' || t.channel === 'both';
 
+export const isCarouselItem = (item: { draft_type?: string; channel?: string }) =>
+  item.draft_type === 'carousel' || item.channel === 'carousel';
+
 export type AgentTask = {
   id: string;
-  task_type: 'research' | 'draft' | 'revise' | 'blog_research' | 'blog_draft' | 'blog_revise';
+  task_type: 'research' | 'draft' | 'revise' | 'blog_research' | 'blog_draft' | 'blog_revise' | 'carousel_draft' | 'carousel_revise';
   agent: 'owl' | 'bee' | 'stork' | 'crane';
   ref_id: string;
   ref_title: string | null;

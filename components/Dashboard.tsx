@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Topic, Draft, Feedback, isBlogItem, isBlogTopic } from '@/lib/supabase';
+import { Topic, Draft, Feedback, isBlogItem, isBlogTopic, isCarouselItem } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState, ArchivedItemRow, ArchivedEntry } from '@/components/ui';
 import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent, extractDraftContent, dedup } from '@/lib/format';
@@ -209,23 +209,40 @@ export function Dashboard() {
 
   // === CAROUSELS TAB ===
   const renderCarousels = () => {
-    const drafted = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'drafted' && d.status !== 'rejected'));
-    const ready = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'ready_to_post'));
-    const published = sortDrafts(data.drafts.filter(d => d.channel === "carousel").filter(d => d.stage === 'published'));
+    const carouselFilter = (t: Topic) => t.channel === 'carousel';
+    const carouselDraftFilter = isCarouselItem;
+    const scouted = sortTopics(data.topics.filter(carouselFilter).filter(t => t.stage === 'scouted' && t.status !== 'archived' && t.status !== 'rejected'));
+    const research = sortTopics(data.topics.filter(carouselFilter).filter(t => t.stage === 'researched' && t.status !== 'archived' && t.status !== 'rejected'));
+    const drafted = sortDrafts(data.drafts.filter(carouselDraftFilter).filter(d => d.stage === 'drafted' && d.status !== 'rejected' && d.status !== 'archived'));
+    const ready = sortDrafts(data.drafts.filter(carouselDraftFilter).filter(d => d.stage === 'ready_to_post'));
+    const published = sortDrafts(data.drafts.filter(carouselDraftFilter).filter(d => d.stage === 'published'));
+    const archived = buildArchivedList(
+      data.topics.filter(carouselFilter).filter(t => t.status === 'archived' || t.status === 'rejected'),
+      data.drafts.filter(carouselDraftFilter).filter(d => d.status === 'archived' || d.status === 'rejected'),
+    );
     return (
       <div className="kanban-scroll flex gap-3 overflow-x-auto pb-4 md:snap-none fade-in h-full">
-        <Column title="Draft" count={drafted.length} accent="var(--plum)">
+        <Column title="Scouted" count={scouted.length} accent="var(--royal)">
+          {scouted.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {scouted.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Research" count={research.length} accent="var(--plum)">
+          {research.map(t => <TopicCard key={t.id} {...topicCardProps(t)} />)}
+          {research.length === 0 && <EmptyState />}
+        </Column>
+        <Column title="Drafted" count={drafted.length} accent="var(--gold)">
           {drafted.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
           {drafted.length === 0 && <EmptyState />}
         </Column>
-        <Column title="Approved" count={ready.length} accent="var(--sage)">
+        <Column title="Ready to post" count={ready.length} accent="var(--sage)">
           {ready.map(d => <DraftCard key={d.id} {...draftCardProps(d)} />)}
           {ready.length === 0 && <EmptyState />}
         </Column>
-        <Column title="Published" count={published.length} accent="var(--royal)">
+        <Column title="Published" count={published.length} accent="var(--plum)">
           {published.map(d => <DraftCard key={d.id} {...draftCardProps(d)} showActions={false} />)}
           {published.length === 0 && <EmptyState />}
         </Column>
+        {renderArchivedColumn(archived)}
       </div>
     );
   };
@@ -482,7 +499,113 @@ export function Dashboard() {
               </div>
             )}
 
-            {!isBlog && content && (
+            {/* Carousel slide preview */}
+            {isDraft && isCarouselItem(item) && item.carousel_json && (() => {
+              try {
+                const carousel = typeof item.carousel_json === 'string' ? JSON.parse(item.carousel_json) : item.carousel_json;
+                const slides = carousel.slides || [];
+                return (
+                  <div className="space-y-3">
+                    {/* PDF download */}
+                    {item.carousel_pdf_url && (
+                      <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="flex items-center gap-2 px-4 py-3 bg-[var(--accent-light)] text-[var(--accent)] rounded-xl text-sm font-medium hover:bg-orange-100 transition-colors border border-[var(--accent)]/10">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                        Download PDF
+                      </a>
+                    )}
+                    {/* Slide previews */}
+                    <div className="space-y-2.5">
+                      {slides.map((slide: any, i: number) => {
+                        const bgColors: Record<string, string> = {
+                          hook: 'var(--charcoal)', dark: 'var(--charcoal)', charcoal: '#252545',
+                          warm: '#FFF8F3', white: '#FFFFFF', coral: 'var(--accent)', cta: 'var(--accent)',
+                          stats: 'var(--charcoal)', bullets: 'var(--charcoal)',
+                        };
+                        const bg = slide.bg || (slide.type === 'hook' || slide.type === 'stats' ? 'dark' : slide.type === 'cta' ? 'coral' : i % 2 === 0 ? 'charcoal' : 'warm');
+                        const isDark = bg === 'dark' || bg === 'charcoal' || bg === 'stats';
+                        const isCoral = bg === 'coral' || slide.type === 'cta';
+                        const textColor = isDark || isCoral ? '#FFFFFF' : 'var(--charcoal)';
+                        const bgColor = bgColors[bg] || bgColors[slide.type] || '#FFF8F3';
+                        return (
+                          <div key={i} className="rounded-lg overflow-hidden border border-[var(--border)]" style={{ backgroundColor: bgColor, color: textColor }}>
+                            {/* Orange top bar */}
+                            <div className="h-[3px] bg-[var(--accent)]" />
+                            <div className="p-4 md:p-5">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-2xs font-semibold uppercase tracking-wider opacity-50">Slide {i + 1} · {slide.type}</span>
+                                {slide.emoji && <span className="text-lg">{slide.emoji}</span>}
+                              </div>
+                              {slide.type === 'hook' && (
+                                <>
+                                  {slide.label && <p className="text-2xs font-bold tracking-[3px] uppercase mb-2" style={{ color: 'var(--accent)' }}>{slide.label}</p>}
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg md:text-xl font-bold leading-tight mb-1" dangerouslySetInnerHTML={{ __html: (slide.title || '').replace(/<span class='highlight'>(.*?)<\/span>/g, `<span style="color: var(--accent)">$1</span>`) }} />
+                                  {slide.subtitle && <p className="text-sm opacity-50">{slide.subtitle}</p>}
+                                </>
+                              )}
+                              {slide.type === 'point' && (
+                                <>
+                                  <span style={{ fontFamily: "'Outfit', sans-serif", color: 'var(--accent)' }} className="text-3xl font-black">{slide.number}</span>
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-base font-bold mt-1 mb-1">{slide.title}</h3>
+                                  <p className="text-sm opacity-60 leading-relaxed">{slide.body}</p>
+                                  {slide.highlight && (
+                                    <div className="mt-2 p-2.5 rounded-lg text-xs" style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.07)' : 'var(--charcoal)', color: isDark ? 'rgba(255,255,255,0.85)' : '#FFFFFF' }}>
+                                      {slide.highlight.icon && <span className="mr-1.5">{slide.highlight.icon}</span>}
+                                      {slide.highlight.text}
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              {slide.type === 'stats' && (
+                                <>
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-base font-bold mb-2">{slide.title}</h3>
+                                  <div className="space-y-1.5">
+                                    {(slide.stats || []).map((s: any, j: number) => (
+                                      <div key={j} className="flex items-center gap-3 p-2 rounded-lg" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                                        <span style={{ fontFamily: "'Outfit', sans-serif", color: 'var(--accent)' }} className="text-xl font-black min-w-[60px]">{s.number}</span>
+                                        <span className="text-xs opacity-60">{s.label}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                              {slide.type === 'bullets' && (
+                                <>
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-base font-bold mb-2">{slide.title}</h3>
+                                  <div className="space-y-1">
+                                    {(slide.items || []).map((b: any, j: number) => (
+                                      <div key={j} className="flex items-start gap-2 text-xs p-1.5 rounded" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+                                        <span className="flex-shrink-0">{b.icon}</span>
+                                        <span className="opacity-75">{b.text}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              )}
+                              {slide.type === 'cta' && (
+                                <div className="text-center py-2">
+                                  <h3 style={{ fontFamily: "'Outfit', sans-serif" }} className="text-lg font-bold mb-1">{slide.title}</h3>
+                                  {slide.subtitle && <p className="text-xs opacity-50 mb-3">{slide.subtitle}</p>}
+                                  {slide.button && <span className="inline-block px-4 py-2 rounded-lg text-xs font-bold" style={{ backgroundColor: isCoral ? '#FFFFFF' : 'var(--accent)', color: isCoral ? 'var(--accent)' : '#FFFFFF' }}>{slide.button}</span>}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* Caption */}
+                    {carousel.caption && (
+                      <div className="bg-[var(--surface)] rounded-xl border border-[var(--border)] p-4">
+                        <p className="text-2xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">LinkedIn Caption</p>
+                        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{carousel.caption}</p>
+                      </div>
+                    )}
+                  </div>
+                );
+              } catch { return null; }
+            })()}
+
+            {!isBlog && !isCarouselItem(item) && content && (
               <div dangerouslySetInnerHTML={{ __html: renderMd(content) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />
             )}
 

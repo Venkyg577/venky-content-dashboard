@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase, Topic, Draft, Feedback, Run, AgentTask, isBlogItem } from '@/lib/supabase';
+import { supabase, Topic, Draft, Feedback, Run, AgentTask, isBlogItem, isCarouselItem } from '@/lib/supabase';
 
 const SLACK_BOT_TOKEN = process.env.NEXT_PUBLIC_SLACK_BOT_TOKEN || '';
 const SLACK_CHANNEL_AIMY = process.env.NEXT_PUBLIC_SLACK_CHANNEL_AIMY || '';
@@ -133,6 +133,43 @@ export function useDashboardData() {
       }
     }
 
+    const isCarousel = t.channel === 'carousel';
+    if (isCarousel) {
+      // CAROUSEL SCOUTED → RESEARCHED: trigger Owl research (same as LinkedIn)
+      if (t.stage === 'scouted') {
+        await supabase.from('topics').update({ status: 'pending', stage: 'researched' }).eq('id', id);
+        await supabase.from('agent_tasks').insert({
+          task_type: 'research', agent: 'owl', ref_id: id, ref_title: t.title,
+          payload: { topic_title: t.title, topic_url: t.url, topic_source: t.source },
+        });
+        notifySlack(SLACK_CHANNEL_AIMY, `Carousel topic sent to research: ${t.title}`);
+        showToast('Sent to Owl for research'); load(); return;
+      }
+      // CAROUSEL RESEARCHED → DRAFT: trigger Bee carousel drafting
+      if (t.stage === 'researched') {
+        const { data: existing } = await supabase.from('drafts').select('id').eq('topic', t.title).eq('draft_type', 'carousel').neq('status', 'rejected').limit(1);
+        let draftId: string | null = null;
+        if (!existing || existing.length === 0) {
+          const { data: newDraft } = await supabase.from('drafts').insert({
+            topic: t.title, channel: 'carousel', draft_type: 'carousel',
+            stage: 'drafted', status: 'pending', content: '', word_count: 0, created_at: Date.now()
+          }).select('id').single();
+          draftId = newDraft?.id || null;
+        } else {
+          draftId = existing[0].id;
+        }
+        await supabase.from('topics').update({ status: 'archived' }).eq('id', id);
+        if (draftId) {
+          await supabase.from('agent_tasks').insert({
+            task_type: 'carousel_draft', agent: 'bee', ref_id: draftId, ref_title: t.title,
+            payload: { topic_title: t.title, topic_summary: t.summary || '' },
+          });
+        }
+        notifySlack(SLACK_CHANNEL_AIMY, `Carousel research approved, sent to Bee for slides: ${t.title}`);
+        showToast('Sent to Bee for carousel slides'); load(); return;
+      }
+    }
+
     if (isBlog) {
       // BLOG SCOUTED → RESEARCHED: trigger Stork research
       if (t.stage === 'scouted') {
@@ -232,18 +269,20 @@ export function useDashboardData() {
   const reviseDraft = async (id: string, fb: string) => {
     if (!fb.trim()) return;
     const draft = drafts.find(d => d.id === id);
-    const isBlogDraft = draft ? isBlogItem(draft) : false;
-    const agent = isBlogDraft ? 'crane' : 'bee';
-    const taskType = isBlogDraft ? 'blog_revise' : 'revise';
-    const slackChannel = isBlogDraft ? SLACK_CHANNEL_BLOG : SLACK_CHANNEL_AIMY;
+    const isBlog = draft ? isBlogItem(draft) : false;
+    const isCarousel = draft ? isCarouselItem(draft) : false;
+    const agent = isBlog ? 'crane' : 'bee';
+    const taskType = isBlog ? 'blog_revise' : isCarousel ? 'carousel_revise' : 'revise';
+    const slackChannel = isBlog ? SLACK_CHANNEL_BLOG : SLACK_CHANNEL_AIMY;
     await supabase.from('drafts').update({ status: 'revision', revised: true, revised_at: Date.now() }).eq('id', id);
     await supabase.from('feedback').insert({ item_id: id, item_type: 'draft', action: 'revise', comment: fb });
     await supabase.from('agent_tasks').insert({
       task_type: taskType, agent, ref_id: id, ref_title: draft?.topic || '',
-      payload: { feedback: fb, current_content: draft?.content || '' },
+      payload: { feedback: fb, current_content: draft?.carousel_json || draft?.content || '' },
     });
     notifySlack(slackChannel, `Revision requested: ${fb}`);
-    showToast(`Sent to ${isBlogDraft ? 'Crane' : 'Bee'} for revision`); load();
+    const agentName = isBlog ? 'Crane' : 'Bee';
+    showToast(`Sent to ${agentName} for revision`); load();
   };
 
   const rejectItem = async (type: 'topic' | 'draft', item: any, feedbackText: string) => {
@@ -262,13 +301,14 @@ export function useDashboardData() {
     if (type === 'topic') {
       await supabase.from('topics').update({ status: 'revision' }).eq('id', item.id);
     } else {
-      const isBlogDraft = isBlogItem(item);
-      const agent = isBlogDraft ? 'crane' : 'bee';
-      const taskType = isBlogDraft ? 'blog_revise' : 'revise';
+      const isBlog = isBlogItem(item);
+      const isCarousel = isCarouselItem(item);
+      const agent = isBlog ? 'crane' : 'bee';
+      const taskType = isBlog ? 'blog_revise' : isCarousel ? 'carousel_revise' : 'revise';
       await supabase.from('drafts').update({ status: 'revision' }).eq('id', item.id);
       await supabase.from('agent_tasks').insert({
         task_type: taskType, agent, ref_id: item.id, ref_title: item.topic || item.title || '',
-        payload: { feedback: feedbackText, current_content: item.content || '' },
+        payload: { feedback: feedbackText, current_content: item.carousel_json || item.content || '' },
       });
     }
     await supabase.from('feedback').insert({ item_id: item.id, item_type: type, action: 'revision', comment: feedbackText });

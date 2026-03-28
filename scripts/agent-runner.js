@@ -152,6 +152,49 @@ function buildPrompt(task) {
         ``,
         `Address the feedback specifically. Maintain blog quality standards.`,
       ].filter(Boolean).join('\n');
+
+    // === CAROUSEL (Bee writes JSON, then we generate PDF) ===
+
+    case 'carousel_draft':
+      return [
+        `Write a LinkedIn carousel for this topic. Output JSON format as per your AGENTS.md carousel section.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        task.payload.topic_summary ? `Research brief:\n${task.payload.topic_summary}` : 'No research brief — check content-bank for briefs on this topic.',
+        ``,
+        `Draft ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After writing, update the draft in Supabase:`,
+        `- Set carousel_json = your carousel JSON (the full object with slides array)`,
+        `- Set content = the LinkedIn caption text`,
+        `- Set word_count = caption word count`,
+        `- Set status = 'approved'`,
+        ``,
+        `6-8 slides. Follow your carousel JSON format exactly.`,
+      ].filter(Boolean).join('\n');
+
+    case 'carousel_revise':
+      return [
+        `Revise this LinkedIn carousel based on Venky's feedback. Output JSON format.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        ``,
+        `Current carousel JSON:`,
+        `---`,
+        task.payload.current_content?.substring(0, 5000) || '(no content)',
+        `---`,
+        ``,
+        `Venky's feedback: "${task.payload.feedback}"`,
+        ``,
+        `Draft ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After revising, update the draft in Supabase:`,
+        `- Set carousel_json = revised carousel JSON`,
+        `- Set content = revised LinkedIn caption`,
+        `- Set status = 'approved'`,
+        ``,
+        `Address the feedback specifically. Keep the slide format consistent.`,
+      ].filter(Boolean).join('\n');
   }
 }
 
@@ -234,6 +277,49 @@ async function processTask(task) {
         }).eq('id', task.ref_id);
       } else {
         log(`   Agent updated Supabase directly ✓`);
+      }
+    } else if (task.task_type === 'carousel_draft' || task.task_type === 'carousel_revise') {
+      // Carousel: check if agent stored carousel_json, try to generate PDF
+      const { data: draft } = await sb.from('drafts').select('carousel_json, content, status').eq('id', task.ref_id).single();
+      if (!draft?.carousel_json || draft.status !== 'approved') {
+        log(`   Agent didn't update Supabase directly, attempting to parse carousel JSON from output`);
+        // Try to extract JSON from the output
+        let carouselJson = null;
+        try {
+          const jsonMatch = result.match(/\{[\s\S]*"slides"[\s\S]*\}/);
+          if (jsonMatch) carouselJson = jsonMatch[0];
+        } catch (_) {}
+        if (carouselJson) {
+          await sb.from('drafts').update({
+            carousel_json: carouselJson,
+            content: result.replace(carouselJson, '').trim().substring(0, 2000) || '',
+            status: 'approved',
+          }).eq('id', task.ref_id);
+        } else {
+          await sb.from('drafts').update({ content: result, status: 'approved' }).eq('id', task.ref_id);
+        }
+      } else {
+        log(`   Agent updated Supabase directly ✓`);
+      }
+      // Try to generate PDF from carousel_json
+      try {
+        const { data: updatedDraft } = await sb.from('drafts').select('carousel_json').eq('id', task.ref_id).single();
+        if (updatedDraft?.carousel_json) {
+          const fs = require('fs');
+          const tmpJson = `/tmp/carousel-${task.ref_id}.json`;
+          const tmpPdf = `/tmp/carousel-${task.ref_id}.pdf`;
+          fs.writeFileSync(tmpJson, typeof updatedDraft.carousel_json === 'string' ? updatedDraft.carousel_json : JSON.stringify(updatedDraft.carousel_json));
+          // Copy JSON into container, generate PDF, copy back
+          execSync(`docker cp ${tmpJson} openclaw-ji9i-openclaw-1:/tmp/carousel-input.json`, { timeout: 10000 });
+          execSync(`${DOCKER_PREFIX} node /data/.openclaw/workspace/carousel-generator/generate-carousel.js /tmp/carousel-input.json /tmp/carousel-output.pdf`, { timeout: 60000 });
+          execSync(`docker cp openclaw-ji9i-openclaw-1:/tmp/carousel-output.pdf ${tmpPdf}`, { timeout: 10000 });
+          // TODO: Upload PDF to storage and set carousel_pdf_url
+          // For now, just log success
+          log(`   📄 Carousel PDF generated: ${tmpPdf}`);
+          try { fs.unlinkSync(tmpJson); } catch (_) {}
+        }
+      } catch (pdfErr) {
+        log(`   ⚠️ PDF generation failed (non-fatal): ${pdfErr.message?.substring(0, 200)}`);
       }
     } else if (task.task_type === 'draft' || task.task_type === 'revise' || task.task_type === 'blog_draft' || task.task_type === 'blog_revise') {
       const { data: draft } = await sb.from('drafts').select('content, status').eq('id', task.ref_id).single();
