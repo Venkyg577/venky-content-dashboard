@@ -7,6 +7,10 @@
  *   node agent-runner.js --simulate   # Simulate mode (mock responses)
  *
  * Deploy to VPS alongside OpenClaw. Runs as a long-lived process.
+ *
+ * IMPORTANT: This script sends minimal context to agents. The agents have their
+ * own AGENTS.md, VOICE.md, SOUL.md, TEMPLATES.md in their workspaces that define
+ * how they research and write. We just tell them WHAT to work on, not HOW.
  */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -14,10 +18,10 @@ const { execSync } = require('child_process');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tptbfxjprpzxwsrerwjm.supabase.co';
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwdGJmeGpwcnB6eHdzcmVyd2ptIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUyNDI3MiwiZXhwIjoyMDkwMTAwMjcyfQ.1d4k8TZvKks9unEECbLFxTYssGhpfLuuNJjBSmyK5dg';
-const POLL_INTERVAL = 15000; // 15 seconds
+const POLL_INTERVAL = 15000;
 const SIMULATE = process.argv.includes('--simulate');
-// Set to empty string if running inside the container, or 'docker exec openclaw-ji9i-openclaw-1' if outside
 const DOCKER_PREFIX = process.env.DOCKER_PREFIX || 'docker exec openclaw-ji9i-openclaw-1';
+const AGENT_TIMEOUT = 600000; // 10 minutes — agents do real research with web fetching
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -25,115 +29,69 @@ function log(msg) {
   console.log(`[${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}] ${msg}`);
 }
 
-// Build agent prompts
+/**
+ * Build prompts that tell agents WHAT to do, not HOW.
+ * Agents have their own AGENTS.md with detailed instructions on voice, format, research process.
+ * We just provide the task context and let them follow their own playbook.
+ */
 function buildPrompt(task) {
   switch (task.task_type) {
     case 'research':
-      return `You are Owl, the research agent. Research this topic thoroughly for Venky's LinkedIn content.
-
-Topic: "${task.ref_title}"
-Source: ${task.payload.topic_url || 'General industry discussion'}
-Context: ${task.payload.topic_source || 'EdTech / L&D industry'}
-
-Write a research summary (300-500 words) with:
-1. Key findings and data points
-2. Industry context and trends
-3. Venky's angle — how this connects to interactive education, AI in learning, and AppletPod
-4. 2-3 potential LinkedIn post angles
-
-Write ONLY the research summary, no meta-commentary.`;
-
-    case 'draft':
-      return `You are Bee, the LinkedIn content writer. Write a LinkedIn post for Venky (Venkatesh G).
-
-Topic: "${task.ref_title}"
-Research: ${task.payload.topic_summary || 'No research available — use your knowledge.'}
-
-Venky's voice:
-- Direct, no fluff. Educational but conversational.
-- 10 years at BYJU'S (Principal Director PMO, Head of Studio, 300+ people)
-- Built 100+ interactive educational applets solo using AI
-- Brand: AppletPod — interactive education technology
-- Entrepreneur perspective, not corporate speak
-
-Write a 200-300 word LinkedIn post. Include:
-- Strong hook (first 2 lines visible before "see more")
-- Personal insight or experience
-- Actionable takeaway
-- No hashtags in the body, add 3-5 at the end
-
-Write ONLY the post content, nothing else.`;
-
-    case 'revise':
-      return `You are Bee, the LinkedIn content writer. Revise this draft based on feedback.
-
-Current draft:
----
-${task.payload.current_content}
----
-
-Feedback: "${task.payload.feedback}"
-
-Rewrite the post addressing the feedback. Keep Venky's voice — direct, educational, entrepreneur perspective. 200-300 words.
-
-Write ONLY the revised post, nothing else.`;
-  }
-}
-
-// Simulate agent response
-function simulateResponse(task) {
-  switch (task.task_type) {
-    case 'research':
-      return `## Research Summary: ${task.ref_title}
-
-### Key Findings
-- The L&D industry is shifting from passive content delivery to interactive, measurable learning experiences
-- Organizations using interactive content see 40-60% higher engagement and 25% better knowledge retention
-- AI is accelerating content creation but quality and pedagogical soundness remain concerns
-
-### Industry Context
-The EdTech sector in 2026 is at an inflection point. Enterprise L&D budgets are growing but expectations around ROI and measurable outcomes are higher than ever. The gap between "content creation" and "learning design" is widening.
-
-### Venky's Angle
-This directly connects to AppletPod's core thesis: interactive education isn't just about making content "engaging" — it's about designing learning experiences that produce measurable outcomes. Venky's experience building 100+ applets proves that AI + learning design expertise can bridge this gap at scale.
-
-### Post Angles
-1. "The content creation trap" — why more content ≠ better learning
-2. Personal story — from managing 300 people to building solo with AI
-3. Data-driven — share specific metrics from interactive vs static content`;
+      return [
+        `Research this LinkedIn topic. Follow your AGENTS.md research process fully.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        task.payload.topic_url ? `Source URL: ${task.payload.topic_url}` : '',
+        task.payload.topic_source ? `Found via: ${task.payload.topic_source}` : '',
+        ``,
+        `Topic ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After researching, update the topic in Supabase:`,
+        `- Set summary = your full research brief`,
+        `- Set status = 'approved'`,
+        ``,
+        `Use the Supabase credentials from your workspace tools.`,
+      ].filter(Boolean).join('\n');
 
     case 'draft':
-      return `Stop creating more content. Start designing better learning.
-
-I spent 10 years at BYJU'S managing 300+ people in content production. We churned out thousands of hours of material.
-
-Here's what I learned: Volume doesn't equal impact.
-
-The teams that moved the needle weren't the ones producing the most content. They were the ones obsessing over HOW students interacted with it.
-
-When I left to build AppletPod, I built 100+ interactive educational applets in 3 months. Solo. Using AI.
-
-Not because AI replaced the thinking — but because it freed me to focus on what matters: the learning design.
-
-Three things I've seen work:
-→ Interaction beats passive consumption every time
-→ Feedback loops > more slides
-→ One well-designed applet > ten PDFs
-
-The future of L&D isn't "AI-generated content at scale."
-
-It's AI-assisted learning design that actually changes behavior.
-
-What's your experience? Are you seeing the shift from content volume to learning quality?
-
-#EdTech #LearningDesign #AI #CorporateTraining #AppletPod`;
+      return [
+        `Write a LinkedIn post for this topic. Follow your AGENTS.md, VOICE.md, and TEMPLATES.md fully.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        task.payload.topic_summary ? `Research brief:\n${task.payload.topic_summary}` : 'No research brief available — check content-bank for briefs on this topic.',
+        ``,
+        `Draft ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After writing, update the draft in Supabase:`,
+        `- Set content = your post text`,
+        `- Set word_count = actual word count`,
+        `- Set status = 'approved'`,
+        ``,
+        `ONE draft only. 250 words max. Follow your pre-flight checklist.`,
+      ].filter(Boolean).join('\n');
 
     case 'revise':
-      return `[Revised based on feedback: "${task.payload.feedback}"]
-
-${task.payload.current_content || 'Revised draft content here.'}
-
-(This is a simulated revision — the real Bee agent will rewrite based on the feedback.)`;
+      return [
+        `Revise this LinkedIn draft based on Venky's feedback. Follow your VOICE.md rules.`,
+        ``,
+        `Topic: "${task.ref_title}"`,
+        ``,
+        `Current draft:`,
+        `---`,
+        task.payload.current_content || '(no content)',
+        `---`,
+        ``,
+        `Venky's feedback: "${task.payload.feedback}"`,
+        ``,
+        `Draft ID in Supabase: ${task.ref_id}`,
+        ``,
+        `After revising, update the draft in Supabase:`,
+        `- Set content = revised post text`,
+        `- Set word_count = actual word count`,
+        `- Set status = 'approved'`,
+        ``,
+        `Address the feedback specifically. Keep Venky's voice per VOICE.md.`,
+      ].filter(Boolean).join('\n');
   }
 }
 
@@ -141,24 +99,36 @@ ${task.payload.current_content || 'Revised draft content here.'}
 async function runAgent(task) {
   if (SIMULATE) {
     log(`🎭 Simulating ${task.agent} for: ${task.ref_title}`);
-    await new Promise(r => setTimeout(r, 3000)); // Simulate 3s delay
-    return simulateResponse(task);
+    await new Promise(r => setTimeout(r, 3000));
+    return `[SIMULATED] ${task.task_type} result for "${task.ref_title}"`;
   }
 
   const prompt = buildPrompt(task);
-  const escapedPrompt = prompt.replace(/'/g, "'\\''");
-  const cmd = `${DOCKER_PREFIX} openclaw agent --agent ${task.agent} --message '${escapedPrompt}'`;
+  // Write prompt to a temp file to avoid shell escaping issues
+  const fs = require('fs');
+  const tmpFile = `/tmp/agent-prompt-${task.id}.txt`;
+  fs.writeFileSync(tmpFile, prompt);
+
+  // Copy prompt file into container, then run agent
+  const copyCmd = `docker cp ${tmpFile} openclaw-ji9i-openclaw-1:/tmp/agent-prompt.txt`;
+  const agentCmd = `${DOCKER_PREFIX} bash -c 'openclaw agent --agent ${task.agent} --message "$(cat /tmp/agent-prompt.txt)"'`;
 
   log(`🚀 Running ${task.agent} agent for: ${task.ref_title}`);
+  log(`   Task type: ${task.task_type} | Timeout: ${AGENT_TIMEOUT / 1000}s`);
+
   try {
-    const output = execSync(cmd, {
-      timeout: 300000, // 5 minute timeout
-      maxBuffer: 1024 * 1024, // 1MB
+    execSync(copyCmd, { timeout: 10000 });
+    const output = execSync(agentCmd, {
+      timeout: AGENT_TIMEOUT,
+      maxBuffer: 5 * 1024 * 1024, // 5MB — agents can produce verbose output
       encoding: 'utf-8',
     });
+    // Clean up temp file
+    try { fs.unlinkSync(tmpFile); } catch (_) {}
     return output.trim();
   } catch (err) {
-    throw new Error(`Agent execution failed: ${err.message}`);
+    try { require('fs').unlinkSync(tmpFile); } catch (_) {}
+    throw new Error(`Agent execution failed: ${err.stderr || err.message}`);
   }
 }
 
@@ -174,44 +144,56 @@ async function processTask(task) {
 
   // Create a run record
   const runId = crypto.randomUUID();
+  const startedAt = Date.now();
   await sb.from('runs').insert({
     id: runId,
     agent_id: task.agent,
     job_name: `${task.task_type}: ${task.ref_title?.substring(0, 50)}`,
     status: 'running',
-    started_at: Date.now(),
+    started_at: startedAt,
   });
 
-  // Update task with run_id
   await sb.from('agent_tasks').update({ run_id: runId, status: 'running' }).eq('id', task.id);
 
   try {
     const result = await runAgent(task);
     const completedAt = Date.now();
+    const durationMs = completedAt - startedAt;
 
-    // Write result back to the source record
+    // The agent should update Supabase directly (it has the credentials in its workspace).
+    // But as a fallback, we also update from here if the agent's output contains the content.
+    // Check if the agent already updated the record:
     if (task.task_type === 'research') {
-      // Update topic with research summary
-      await sb.from('topics').update({
-        summary: result,
-        status: 'approved', // Ready for user to approve → create draft
-      }).eq('id', task.ref_id);
-      log(`✅ Research complete. Topic updated with summary.`);
+      const { data: topic } = await sb.from('topics').select('summary, status').eq('id', task.ref_id).single();
+      if (!topic?.summary || topic.status !== 'approved') {
+        // Agent didn't update Supabase directly — use the output as the summary
+        log(`   Agent didn't update Supabase directly, writing result as summary`);
+        await sb.from('topics').update({
+          summary: result,
+          status: 'approved',
+        }).eq('id', task.ref_id);
+      } else {
+        log(`   Agent updated Supabase directly ✓`);
+      }
     } else if (task.task_type === 'draft' || task.task_type === 'revise') {
-      // Update draft with content
-      const wordCount = result.split(/\s+/).length;
-      await sb.from('drafts').update({
-        content: result,
-        word_count: wordCount,
-        status: 'approved', // Ready for user review
-      }).eq('id', task.ref_id);
-      log(`✅ ${task.task_type === 'draft' ? 'Draft' : 'Revision'} complete. ${wordCount} words.`);
+      const { data: draft } = await sb.from('drafts').select('content, status').eq('id', task.ref_id).single();
+      if (!draft?.content || draft.content === '' || draft.status !== 'approved') {
+        log(`   Agent didn't update Supabase directly, writing result as content`);
+        const wordCount = result.split(/\s+/).length;
+        await sb.from('drafts').update({
+          content: result,
+          word_count: wordCount,
+          status: 'approved',
+        }).eq('id', task.ref_id);
+      } else {
+        log(`   Agent updated Supabase directly ✓`);
+      }
     }
 
     // Mark task completed
     await sb.from('agent_tasks').update({
       status: 'completed',
-      result: { output: result.substring(0, 500), word_count: result.split(/\s+/).length },
+      result: { output_length: result.length, word_count: result.split(/\s+/).length },
       completed_at: new Date().toISOString(),
     }).eq('id', task.id);
 
@@ -219,15 +201,18 @@ async function processTask(task) {
     await sb.from('runs').update({
       status: 'completed',
       completed_at: completedAt,
-      duration_ms: completedAt - (task.claimed_at ? new Date(task.claimed_at).getTime() : Date.now()),
+      duration_ms: durationMs,
     }).eq('id', runId);
 
+    log(`✅ Done in ${Math.round(durationMs / 1000)}s`);
+
   } catch (err) {
-    log(`❌ Task failed: ${err.message}`);
+    const errMsg = err.message?.substring(0, 500) || 'Unknown error';
+    log(`❌ Task failed: ${errMsg}`);
 
     await sb.from('agent_tasks').update({
       status: 'failed',
-      error: err.message,
+      error: errMsg,
       completed_at: new Date().toISOString(),
     }).eq('id', task.id);
 
@@ -240,28 +225,33 @@ async function processTask(task) {
 
 // Main poll loop
 async function poll() {
-  const { data: tasks, error } = await sb
-    .from('agent_tasks')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(1);
+  try {
+    const { data: tasks, error } = await sb
+      .from('agent_tasks')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+      .limit(1);
 
-  if (error) {
-    log(`⚠️ Poll error: ${error.message}`);
-    return;
-  }
+    if (error) {
+      log(`⚠️ Poll error: ${error.message}`);
+      return;
+    }
 
-  if (tasks && tasks.length > 0) {
-    await processTask(tasks[0]);
+    if (tasks && tasks.length > 0) {
+      await processTask(tasks[0]);
+    }
+  } catch (e) {
+    log(`⚠️ Poll exception: ${e.message}`);
   }
 }
 
 // Start
 async function main() {
-  log(`🤖 Agent Runner started ${SIMULATE ? '(SIMULATE MODE)' : '(LIVE MODE)'}`);
+  log(`🤖 Agent Runner started ${SIMULATE ? '(SIMULATE MODE)' : '(LIVE MODE — real OpenClaw agents)'}`);
   log(`📡 Polling Supabase every ${POLL_INTERVAL / 1000}s`);
-  if (!SIMULATE) log(`🐳 Docker: ${DOCKER_PREFIX || '(running inside container)'}`);
+  log(`⏱️  Agent timeout: ${AGENT_TIMEOUT / 1000}s`);
+  if (!SIMULATE) log(`🐳 Docker: ${DOCKER_PREFIX}`);
 
   // Initial poll
   await poll();

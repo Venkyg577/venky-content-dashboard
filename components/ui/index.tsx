@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Topic, Draft } from '@/lib/supabase';
-import { ago, fitColor, copyToClipboard, stripFrontmatter } from '@/lib/format';
+import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
 // === KANBAN COLUMN ===
@@ -36,7 +36,11 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
 }) {
   const isBlogTopic = t.channel === 'blog' || t.channel === 'both';
   const isResearched = t.stage === 'researched';
-  const summarySnippet = t.summary ? t.summary.replace(/^#[^\n]+\n*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^[\s\-*]+/gm, '').trim().substring(0, 140) : '';
+  const summarySnippet = t.summary ? (() => {
+    const brief = parseResearchBrief(t.summary);
+    const text = brief.sections.length > 0 ? brief.sections[0].content : t.summary;
+    return text.replace(/^#[^\n]+\n*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/^[\s\-*]+/gm, '').trim().substring(0, 140);
+  })() : '';
 
   return (
     <div className="group bg-white rounded-xl border border-[var(--border)] overflow-hidden cursor-pointer card-hover"

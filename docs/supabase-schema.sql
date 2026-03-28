@@ -167,3 +167,12 @@ WHERE r.started_at >= NOW() - INTERVAL '7 days';
 -- ALTER TABLE research_briefs ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE drafts ENABLE ROW LEVEL SECURITY;
 -- ALTER TABLE calendar ENABLE ROW LEVEL SECURITY;
+
+-- ============================================
+-- REALTIME (Required for live dashboard updates)
+-- ============================================
+-- Enable Supabase Realtime on key tables:
+ALTER PUBLICATION supabase_realtime ADD TABLE topics;
+ALTER PUBLICATION supabase_realtime ADD TABLE drafts;
+ALTER PUBLICATION supabase_realtime ADD TABLE agent_tasks;
+ALTER PUBLICATION supabase_realtime ADD TABLE runs;

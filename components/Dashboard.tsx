@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Topic, Draft, Feedback } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState } from '@/components/ui';
-import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter } from '@/lib/format';
+import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent } from '@/lib/format';
 import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
 
 type Tab = 'overview' | 'linkedin' | 'carousels' | 'blogs' | 'calendar';
@@ -379,17 +379,46 @@ export function Dashboard() {
                     <span className="truncate flex-1">Search: {item.title}</span>
                   </a>
                 )}
-                {item.summary && (
-                  <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden">
-                    <div className="px-4 py-2.5 bg-[var(--surface)] border-b border-[var(--border)]">
-                      <p className="text-2xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Research brief</p>
+                {item.summary && (() => {
+                  const brief = parseResearchBrief(item.summary);
+                  const isThinking = hasThinkingContent(item.summary);
+                  return (
+                    <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden">
+                      <div className="px-4 py-2.5 bg-[var(--surface)] border-b border-[var(--border)] flex items-center justify-between">
+                        <p className="text-2xs font-semibold text-[var(--text-muted)] uppercase tracking-wider">Research Brief</p>
+                        {isThinking && <span className="text-2xs px-2 py-0.5 rounded-full bg-[var(--gold-light)] text-[var(--gold)] font-semibold">Contains raw agent output</span>}
+                      </div>
+                      <div className="max-h-[400px] overflow-y-auto scrollbar-thin">
+                        {brief.sections.length > 1 ? (
+                          brief.sections.map((section, i) => {
+                            const sectionColors: Record<string, string> = {
+                              'Key Findings': 'var(--sage)',
+                              'Sources': 'var(--royal)',
+                              'Industry Context': 'var(--plum)',
+                              "Venky's Angle": 'var(--accent)',
+                              'Post Angles': 'var(--gold)',
+                              'Evidence': 'var(--royal)',
+                              'Context': 'var(--plum)',
+                              'Angle': 'var(--accent)',
+                            };
+                            const color = Object.entries(sectionColors).find(([k]) => section.title.includes(k))?.[1] || 'var(--text-secondary)';
+                            return (
+                              <div key={i} className={`px-4 py-3 ${i > 0 ? 'border-t border-[var(--border)]' : ''}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                  <p className="text-xs font-semibold" style={{ color }}>{section.title}</p>
+                                </div>
+                                <div className="text-sm text-[var(--text-secondary)] leading-relaxed pl-4" dangerouslySetInnerHTML={{ __html: renderMd(section.content) }} />
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <div className="px-4 py-4 text-sm text-[var(--text-secondary)] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMd(brief.raw || item.summary.substring(0, 1500)) }} />
+                        )}
+                      </div>
                     </div>
-                    <div className="px-4 py-4 text-sm text-[var(--text-secondary)] leading-relaxed max-h-[300px] overflow-y-auto scrollbar-thin">
-                      {item.summary.substring(0, 1000)}
-                      {item.summary.length > 1000 && <p className="mt-3 text-xs text-[var(--text-muted)] italic">...truncated</p>}
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
                 {!item.summary && (
                   <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
                     <span className="text-lg">🔬</span>

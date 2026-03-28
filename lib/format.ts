@@ -33,6 +33,59 @@ export const renderMd = (text: string) => {
     .replace(/\n/g, '<br/>');
 };
 
+// Parse structured research brief into sections, stripping agent thinking/process narration
+export const parseResearchBrief = (text: string): { sections: { title: string; content: string }[]; raw: string } => {
+  if (!text) return { sections: [], raw: '' };
+
+  // Strip thinking/process lines that agents leak into output
+  const thinkingPatterns = [
+    /^(Let me |I'll |I will |Now let me |While waiting|Let me check|Let me search|Let me fetch|The fetch didn't|I need to|I should|I'm going to|Looking at|Searching for|Fetching|Checking|Reading|Processing)/i,
+    /^(Now I|First,? let me|Next,? let me|Finally,? let me|Let's |Alright|OK,? |Sure,? |Great,? )/i,
+    /^(Waiting for|Polling|Retrying|Attempting|Running|Executing|Calling|Invoking)/i,
+  ];
+
+  const lines = text.split('\n');
+  const cleanedLines = lines.filter(line => {
+    const trimmed = line.trim();
+    return !thinkingPatterns.some(p => p.test(trimmed));
+  });
+  const cleaned = cleanedLines.join('\n').trim();
+
+  // Parse markdown ## sections
+  const sectionRegex = /^##\s+(.+)$/gm;
+  const sections: { title: string; content: string }[] = [];
+  let match;
+  const matches: { title: string; index: number }[] = [];
+
+  while ((match = sectionRegex.exec(cleaned)) !== null) {
+    matches.push({ title: match[1].trim(), index: match.index + match[0].length });
+  }
+
+  for (let i = 0; i < matches.length; i++) {
+    const start = matches[i].index;
+    const end = i + 1 < matches.length ? cleaned.lastIndexOf('##', matches[i + 1].index) : cleaned.length;
+    const content = cleaned.substring(start, end).trim();
+    if (content) {
+      sections.push({ title: matches[i].title, content });
+    }
+  }
+
+  // If no sections found, treat the whole thing as one section
+  if (sections.length === 0 && cleaned.length > 0) {
+    sections.push({ title: 'Research Brief', content: cleaned });
+  }
+
+  return { sections, raw: cleaned };
+};
+
+// Detect if content still has agent thinking/process narration
+export const hasThinkingContent = (text: string): boolean => {
+  if (!text) return false;
+  const indicators = ['Let me ', "I'll ", 'Now let me ', 'Let me fetch', 'Let me search', 'The fetch didn\'t'];
+  const count = indicators.filter(i => text.includes(i)).length;
+  return count >= 2;
+};
+
 export const stripFrontmatter = (text: string): { body: string; meta: Record<string, string> } => {
   const meta: Record<string, string> = {};
   let body = text;

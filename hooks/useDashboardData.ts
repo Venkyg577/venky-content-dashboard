@@ -35,7 +35,19 @@ export function useDashboardData() {
     setLoading(false);
   }, []);
 
+  // Initial load + polling fallback
   useEffect(() => { load(); const i = setInterval(load, 30000); return () => clearInterval(i); }, [load]);
+
+  // Supabase Realtime — instant updates when agents write back to DB
+  useEffect(() => {
+    const channel = supabase.channel('dashboard-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'topics' }, () => { load(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'drafts' }, () => { load(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'agent_tasks' }, () => { load(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'runs' }, () => { load(); })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [load]);
 
   const requireAuth = (fn: () => void) => {
     if (authed) return fn();
