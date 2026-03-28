@@ -244,6 +244,7 @@ body {
     max-height: calc(100dvh - 65px) !important;
     scroll-snap-align: center;
     flex-shrink: 0 !important;
+    border-radius: 12px !important;
   }
   /* Card scroll area: vertical scroll inside columns */
   .kanban-scroll > div > div:last-child {
