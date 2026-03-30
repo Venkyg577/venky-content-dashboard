@@ -515,7 +515,12 @@ export function Dashboard() {
                 const raw = typeof item.carousel_json === 'string' ? item.carousel_json : JSON.stringify(item.carousel_json);
                 const sanitized = raw.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
                 const carousel = JSON.parse(sanitized);
-                const slides = carousel.slides || [];
+                const slides = (carousel.slides || []).map((s: any) => ({
+                  ...s,
+                  title: s.title || s.heading || '',
+                  subtitle: s.subtitle || s.subheading || '',
+                  items: s.items?.map((it: any) => typeof it === 'string' ? { text: it, icon: '→' } : it),
+                }));
                 return (
                   <div className="space-y-3">
                     {/* Slide previews — LinkedIn 4:5 ratio */}
