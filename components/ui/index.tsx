@@ -171,7 +171,11 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
         )}
         {showActions && d.stage === 'ready_to_post' && (
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
-            <button onClick={() => d.content && onCopy(extractDraftContent(d.content))} className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy</button>
+            {d.carousel_pdf_url ? (
+              <a href={d.carousel_pdf_url} download className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors no-underline">Download PDF</a>
+            ) : d.content ? (
+              <button onClick={() => onCopy(extractDraftContent(d.content || ''))} className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy</button>
+            ) : null}
             <button onClick={() => requireAuth(() => onPublish(d.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Mark published</button>
           </div>
         )}
