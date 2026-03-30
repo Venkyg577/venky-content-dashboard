@@ -731,9 +731,9 @@ export function Dashboard() {
   ];
 
   return (
-    <div className="h-screen h-[100dvh] flex flex-col bg-[var(--surface)]">
+    <div className="flex flex-col bg-[var(--surface)]" style={{ height: 'var(--app-height, 100dvh)' }}>
       {/* Header */}
-      <header className="bg-white border-b border-[var(--border)] px-4 md:px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-sm">
+      <header className="bg-white border-b border-[var(--border)] px-4 md:px-6 flex items-center justify-between shadow-sm" style={{ height: 'calc(var(--app-height, 100dvh) * 0.1)', minHeight: '44px' }}>
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[var(--accent)] to-[var(--plum)] flex items-center justify-center shadow-sm">
             <span className="text-white text-sm font-bold">V</span>
@@ -764,7 +764,7 @@ export function Dashboard() {
       </nav>
 
       {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] px-2 py-1 flex justify-around z-40 safe-bottom shadow-lg">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] px-2 flex justify-around z-40 safe-bottom shadow-lg items-center" style={{ height: 'calc(var(--app-height, 100dvh) * 0.1)', minHeight: '44px' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex flex-col items-center py-1.5 px-2 rounded-lg transition-all relative min-w-[56px] ${tab === t.key ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
@@ -776,7 +776,7 @@ export function Dashboard() {
       </nav>
 
       {/* Content */}
-      <main className={`flex-1 min-h-0 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto pb-20 md:pb-5' : 'overflow-hidden'} p-3 md:p-5`}>
+      <main className={`min-h-0 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4`} style={{ height: 'calc(var(--app-height, 100dvh) * 0.8)' }}>
         <div className="h-full">
           {tab === 'overview' && renderOverview()}
           {tab === 'linkedin' && renderLinkedIn()}
