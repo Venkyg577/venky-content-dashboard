@@ -172,7 +172,10 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
         {showActions && d.stage === 'ready_to_post' && (
           <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
             {d.carousel_pdf_url ? (
-              <a href={d.carousel_pdf_url} download className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors no-underline">Download PDF</a>
+              <>
+                <a href={d.carousel_pdf_url} download className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors no-underline">Download</a>
+                <button onClick={() => onView(d)} className="text-xs px-3 py-2 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-colors">Preview</button>
+              </>
             ) : d.content ? (
               <button onClick={() => onCopy(extractDraftContent(d.content || ''))} className="text-xs px-3 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy</button>
             ) : null}
