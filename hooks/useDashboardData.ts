@@ -242,7 +242,12 @@ export function useDashboardData() {
     await supabase.from('drafts').update({ status: 'approved', stage: 'ready_to_post' }).eq('id', id);
     const d = drafts.find(x => x.id === id);
     if (d?.channel === 'blog') notifySlack(SLACK_CHANNEL_BLOG, `Blog approved: ${d?.topic}`);
-    showToast('Approved'); load();
+    if (d?.channel === 'carousel') {
+      showToast('Approved — PDF generating...'); 
+    } else {
+      showToast('Approved');
+    }
+    load();
   };
 
   const publishDraft = async (id: string) => {
