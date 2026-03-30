@@ -29,17 +29,19 @@ export const getTopicActions = (stage: string, status: string) => {
   
   const isScouted = stage === 'scouted';
   const isResearched = stage === 'researched';
-  
-  const isInProgress = status === TopicActionStatus.PENDING && isResearched; // Only "in progress" if researched+pending
-  const isReady = (isScouted && status === TopicActionStatus.PENDING) || (isResearched && status === TopicActionStatus.APPROVED);
   const isRevising = status === TopicActionStatus.REVISION;
+  
+  // Show Approve for: scouted+pending, researched+approved, AND researched+pending (agent may be done)
+  const isReady = (isScouted && status === TopicActionStatus.PENDING) 
+    || (isResearched && status === TopicActionStatus.APPROVED)
+    || (isResearched && status === TopicActionStatus.PENDING);
 
   return {
     showApprove: isReady,
     showReject: isReady,
     showRevise: false,
-    showArchive: !isInProgress && status !== 'archived',
-    statusLabel: isInProgress ? '⏳ In Progress' : isRevising ? '📝 Revising' : isReady ? '✅ Ready to Review' : '',
+    showArchive: status !== 'archived',
+    statusLabel: (isResearched && status === TopicActionStatus.PENDING) ? '⏳ In Progress (Approve to proceed)' : isRevising ? '📝 Revising' : isReady ? '✅ Ready to Review' : '',
     isActionable: isReady,
   };
 };
@@ -49,15 +51,15 @@ export const getTopicActions = (stage: string, status: string) => {
  */
 export const getDraftActions = (stage: string, status: string) => {
   const isInProgress = status === DraftActionStatus.PENDING;
-  const isReady = status === DraftActionStatus.APPROVED;
+  const isReady = status === DraftActionStatus.APPROVED || status === DraftActionStatus.PENDING;
   const isRevising = status === DraftActionStatus.REVISION;
 
   return {
     showApprove: isReady,
     showReject: isReady,
     showRevise: isReady && (stage === 'drafted' || stage === 'ready_to_post'),
-    showArchive: status !== 'archived', // Always show Archive (can reject in-progress too)
-    statusLabel: isInProgress ? '⏳ Writing' : isRevising ? '📝 Revising' : isReady ? '✅ Ready to Review' : '',
+    showArchive: status !== 'archived',
+    statusLabel: isInProgress ? '⏳ Writing (Approve to proceed)' : isRevising ? '📝 Revising' : status === DraftActionStatus.APPROVED ? '✅ Ready to Review' : '',
     isActionable: isReady,
   };
 };
