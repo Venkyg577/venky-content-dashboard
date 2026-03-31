@@ -474,7 +474,7 @@ export function Dashboard() {
     const isBlog = isBlogItem(item);
 
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center modal-backdrop" style={{ transition: 'opacity 0.35s ease' }} onClick={closeModal}>
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center modal-backdrop" onClick={closeModal}>
         {/* Mobile: bottom sheet / Desktop: centered modal */}
         <div ref={sheetRef}
              className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
