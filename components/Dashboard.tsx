@@ -48,6 +48,81 @@ export function Dashboard() {
     </Column>
   );
 
+  // === SWIPE TO DISMISS (mobile) — must be before early returns for hooks order ===
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{ startY: number; currentY: number; isDragging: boolean; scrollTop: number }>({ startY: 0, currentY: 0, isDragging: false, scrollTop: 0 });
+
+  const closeModal = useCallback(() => {
+    const sheet = sheetRef.current;
+    if (sheet) {
+      sheet.classList.remove('sheet-dragging');
+      sheet.classList.add('sheet-snapping');
+      sheet.style.transform = 'translateY(100%)';
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = '0';
+      setTimeout(() => { setModal(null); setFeedbackText(''); }, 350);
+    } else {
+      setModal(null); setFeedbackText('');
+    }
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
+    const atTop = !scrollBody || scrollBody.scrollTop <= 0;
+    dragState.current = { startY: e.touches[0].clientY, currentY: e.touches[0].clientY, isDragging: atTop, scrollTop: scrollBody?.scrollTop || 0 };
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const ds = dragState.current;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
+    const touchY = e.touches[0].clientY;
+    const deltaY = touchY - ds.startY;
+
+    if (!ds.isDragging) {
+      if (deltaY > 0 && scrollBody && scrollBody.scrollTop <= 0) {
+        ds.isDragging = true;
+        ds.startY = touchY;
+      } else {
+        return;
+      }
+    }
+
+    const offset = Math.max(0, touchY - ds.startY);
+    if (offset > 0) {
+      try { e.preventDefault(); } catch {}
+      sheet.classList.add('sheet-dragging');
+      const dampened = offset < 100 ? offset : 100 + (offset - 100) * 0.3;
+      sheet.style.transform = `translateY(${dampened}px)`;
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = `${Math.max(0.2, 1 - offset / 400)}`;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    const ds = dragState.current;
+    const sheet = sheetRef.current;
+    if (!sheet || !ds.isDragging) return;
+    ds.isDragging = false;
+
+    const match = sheet.style.transform.match(/translateY\((.+?)px\)/);
+    const currentOffset = match ? parseFloat(match[1]) : 0;
+
+    if (currentOffset > 120) {
+      closeModal();
+    } else {
+      sheet.classList.remove('sheet-dragging');
+      sheet.classList.add('sheet-snapping');
+      sheet.style.transform = 'translateY(0)';
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = '1';
+      setTimeout(() => { sheet.classList.remove('sheet-snapping'); }, 350);
+    }
+  }, [closeModal]);
+
   if (data.loading) return (
     <div className="h-screen h-[100dvh] flex items-center justify-center bg-[var(--surface)]">
       <div className="text-center">
@@ -388,89 +463,6 @@ export function Dashboard() {
     );
   };
 
-  // === SWIPE TO DISMISS (mobile) ===
-  const sheetRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ startY: number; currentY: number; isDragging: boolean; scrollTop: number }>({ startY: 0, currentY: 0, isDragging: false, scrollTop: 0 });
-
-  const closeModal = useCallback(() => {
-    const sheet = sheetRef.current;
-    if (sheet) {
-      sheet.classList.remove('sheet-dragging');
-      sheet.classList.add('sheet-snapping');
-      sheet.style.transform = 'translateY(100%)';
-      const backdrop = sheet.parentElement;
-      if (backdrop) backdrop.style.opacity = '0';
-      setTimeout(() => { setModal(null); setFeedbackText(''); }, 350);
-    } else {
-      setModal(null); setFeedbackText('');
-    }
-  }, []);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    // Only start drag if scrolled to top of modal body
-    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
-    const atTop = !scrollBody || scrollBody.scrollTop <= 0;
-    dragState.current = { startY: e.touches[0].clientY, currentY: e.touches[0].clientY, isDragging: atTop, scrollTop: scrollBody?.scrollTop || 0 };
-  }, []);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    const ds = dragState.current;
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
-    const touchY = e.touches[0].clientY;
-    const deltaY = touchY - ds.startY;
-
-    // If not dragging yet, check if we should start (scrolled to top + pulling down)
-    if (!ds.isDragging) {
-      if (deltaY > 0 && scrollBody && scrollBody.scrollTop <= 0) {
-        ds.isDragging = true;
-        ds.startY = touchY;
-      } else {
-        return;
-      }
-    }
-
-    const offset = Math.max(0, touchY - ds.startY);
-    if (offset > 0) {
-      e.preventDefault();
-      sheet.classList.add('sheet-dragging');
-      // Rubber band effect — diminishing returns past 100px
-      const dampened = offset < 100 ? offset : 100 + (offset - 100) * 0.3;
-      sheet.style.transform = `translateY(${dampened}px)`;
-      // Fade backdrop proportionally
-      const backdrop = sheet.parentElement;
-      if (backdrop) backdrop.style.opacity = `${Math.max(0.2, 1 - offset / 400)}`;
-    }
-  }, []);
-
-  const handleTouchEnd = useCallback(() => {
-    const ds = dragState.current;
-    const sheet = sheetRef.current;
-    if (!sheet || !ds.isDragging) return;
-    const offset = ds.currentY - ds.startY;
-    ds.isDragging = false;
-
-    // Parse current translateY from style
-    const match = sheet.style.transform.match(/translateY\((.+?)px\)/);
-    const currentOffset = match ? parseFloat(match[1]) : 0;
-
-    if (currentOffset > 120) {
-      // Dismiss
-      closeModal();
-    } else {
-      // Snap back
-      sheet.classList.remove('sheet-dragging');
-      sheet.classList.add('sheet-snapping');
-      sheet.style.transform = 'translateY(0)';
-      const backdrop = sheet.parentElement;
-      if (backdrop) backdrop.style.opacity = '1';
-      setTimeout(() => { sheet.classList.remove('sheet-snapping'); }, 350);
-    }
-  }, [closeModal]);
-
   // === MODAL ===
   const renderModal = () => {
     if (!modal) return null;
@@ -482,7 +474,7 @@ export function Dashboard() {
     const isBlog = isBlogItem(item);
 
     return (
-      <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center modal-backdrop" style={{ transition: 'opacity 0.35s ease' }} onClick={closeModal}>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center modal-backdrop" style={{ transition: 'opacity 0.35s ease' }} onClick={closeModal}>
         {/* Mobile: bottom sheet / Desktop: centered modal */}
         <div ref={sheetRef}
              className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
