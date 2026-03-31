@@ -503,16 +503,6 @@ export function Dashboard() {
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {/* Desktop only — carousel header actions */}
-            {type === 'draft' && isCarouselItem(item) && (
-              <div className="hidden md:flex flex-wrap gap-2 mt-3">
-                {item.carousel_pdf_url && <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="text-xs px-3.5 py-2 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-colors flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  Download PDF
-                </a>}
-                {item.caption && <button onClick={() => handleCopy(item.caption)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--plum)] text-white font-semibold hover:opacity-90 transition-colors">Copy caption</button>}
-              </div>
-            )}
             {type === 'draft' && !isCarouselItem(item) && content && (
               <div className="flex flex-wrap gap-2 mt-3">
                 <button onClick={() => handleCopy(content)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy content</button>
@@ -856,20 +846,12 @@ export function Dashboard() {
                 );
               })()}
               {type === 'draft' && item.stage === 'ready_to_post' && (
-                <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
-              )}
-              {/* Mobile carousel icon buttons */}
-              {type === 'draft' && isCarouselItem(item) && (
-                <div className="flex md:hidden gap-1.5">
-                  {item.carousel_pdf_url && (
+                <div className="flex gap-2">
+                  <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
+                  {isCarouselItem(item) && item.carousel_pdf_url && (
                     <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--accent)] text-white hover:opacity-90 transition-colors" title="Download PDF">
                       <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                     </a>
-                  )}
-                  {item.caption && (
-                    <button onClick={() => handleCopy(item.caption)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--plum)] text-white hover:opacity-90 transition-colors" title="Copy caption">
-                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
-                    </button>
                   )}
                 </div>
               )}
