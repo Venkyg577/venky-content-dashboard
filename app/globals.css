@@ -39,7 +39,14 @@
 .font-body { font-family: 'Outfit', 'Work Sans', system-ui, -apple-system, sans-serif; }
 .font-heading { font-family: Georgia, 'Times New Roman', serif; }
 
-* { -webkit-tap-highlight-color: transparent; }
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+html {
+  scroll-behavior: smooth;
+}
 
 body {
   color: var(--text-primary);
@@ -54,6 +61,16 @@ body {
 .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin:hover::-webkit-scrollbar-thumb { background: var(--border-hover); }
+
+/* GPU-accelerated smooth scrolling for all scroll containers */
+.scrollbar-thin,
+.scrollbar-hide,
+.kanban-scroll,
+.kanban-scroll > div > div:last-child {
+  will-change: scroll-position;
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+}
 
 /* Hide scrollbar but keep functionality */
 .scrollbar-hide::-webkit-scrollbar { display: none; }
@@ -168,29 +185,53 @@ body {
 
 /* Smooth page transitions */
 .fade-in {
-  animation: fadeIn 0.2s ease-out;
+  animation: fadeIn 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* Slide up for modals */
+/* Modal backdrop — smooth fade */
+.modal-backdrop {
+  animation: backdropIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes backdropIn {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to { opacity: 1; backdrop-filter: blur(12px); }
+}
+
+/* Desktop modal — scale + fade spring */
 .slide-up {
-  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  will-change: transform, opacity;
 }
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  from { opacity: 0; transform: translateY(24px) scale(0.95); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Mobile sheet animation */
+/* Mobile bottom sheet — spring slide */
 .slide-up-sheet {
-  animation: slideUpSheet 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: slideUpSheet 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+  touch-action: none;
 }
 @keyframes slideUpSheet {
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
+}
+
+/* Mobile sheet being dragged — disable animation, use direct transform */
+.sheet-dragging {
+  animation: none !important;
+  transition: none !important;
+}
+
+/* Mobile sheet snapping back or dismissing */
+.sheet-snapping {
+  animation: none !important;
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Pulse dot */

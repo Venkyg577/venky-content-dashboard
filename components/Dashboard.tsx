@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { Topic, Draft, Feedback, isBlogItem, isBlogTopic, isCarouselItem } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState, ArchivedItemRow, ArchivedEntry } from '@/components/ui';
@@ -47,6 +47,81 @@ export function Dashboard() {
       {archived.length === 0 && <EmptyState message="Nothing archived" />}
     </Column>
   );
+
+  // === SWIPE TO DISMISS (mobile) — must be before early returns for hooks order ===
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{ startY: number; currentY: number; isDragging: boolean; scrollTop: number }>({ startY: 0, currentY: 0, isDragging: false, scrollTop: 0 });
+
+  const closeModal = useCallback(() => {
+    const sheet = sheetRef.current;
+    if (sheet) {
+      sheet.classList.remove('sheet-dragging');
+      sheet.classList.add('sheet-snapping');
+      sheet.style.transform = 'translateY(100%)';
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = '0';
+      setTimeout(() => { setModal(null); setFeedbackText(''); }, 350);
+    } else {
+      setModal(null); setFeedbackText('');
+    }
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
+    const atTop = !scrollBody || scrollBody.scrollTop <= 0;
+    dragState.current = { startY: e.touches[0].clientY, currentY: e.touches[0].clientY, isDragging: atTop, scrollTop: scrollBody?.scrollTop || 0 };
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const ds = dragState.current;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
+    const touchY = e.touches[0].clientY;
+    const deltaY = touchY - ds.startY;
+
+    if (!ds.isDragging) {
+      if (deltaY > 0 && scrollBody && scrollBody.scrollTop <= 0) {
+        ds.isDragging = true;
+        ds.startY = touchY;
+      } else {
+        return;
+      }
+    }
+
+    const offset = Math.max(0, touchY - ds.startY);
+    if (offset > 0) {
+      try { e.preventDefault(); } catch {}
+      sheet.classList.add('sheet-dragging');
+      const dampened = offset < 100 ? offset : 100 + (offset - 100) * 0.3;
+      sheet.style.transform = `translateY(${dampened}px)`;
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = `${Math.max(0.2, 1 - offset / 400)}`;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    const ds = dragState.current;
+    const sheet = sheetRef.current;
+    if (!sheet || !ds.isDragging) return;
+    ds.isDragging = false;
+
+    const match = sheet.style.transform.match(/translateY\((.+?)px\)/);
+    const currentOffset = match ? parseFloat(match[1]) : 0;
+
+    if (currentOffset > 120) {
+      closeModal();
+    } else {
+      sheet.classList.remove('sheet-dragging');
+      sheet.classList.add('sheet-snapping');
+      sheet.style.transform = 'translateY(0)';
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = '1';
+      setTimeout(() => { sheet.classList.remove('sheet-snapping'); }, 350);
+    }
+  }, [closeModal]);
 
   if (data.loading) return (
     <div className="h-screen h-[100dvh] flex items-center justify-center bg-[var(--surface)]">
@@ -101,9 +176,9 @@ export function Dashboard() {
     ];
 
     return (
-      <div className="space-y-6 fade-in">
+      <div className="flex flex-col gap-4 md:gap-6 fade-in h-full">
         {/* Metrics */}
-        <div className="grid grid-cols-2 xs:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 xs:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 flex-shrink-0">
           {metrics.map(m => (
             <div key={m.label} className="bg-white rounded-xl border border-[var(--border)] p-4 md:p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
@@ -119,12 +194,12 @@ export function Dashboard() {
         </div>
 
         {/* Agent Runs */}
-        <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">
-          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-sm flex flex-col min-h-0 flex-1">
+          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
             <h3 className="font-semibold text-sm text-[var(--text-primary)]">Recent agent runs</h3>
             <span className="text-2xs text-[var(--text-muted)]">{data.runs.length} total</span>
           </div>
-          <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
+          <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
             {/* Mobile: card layout / Desktop: table */}
             <div className="hidden md:block">
               <table className="w-full text-sm">
@@ -399,13 +474,17 @@ export function Dashboard() {
     const isBlog = isBlogItem(item);
 
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center" onClick={() => { setModal(null); setFeedbackText(''); }}>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center modal-backdrop" style={{ transition: 'opacity 0.35s ease' }} onClick={closeModal}>
         {/* Mobile: bottom sheet / Desktop: centered modal */}
-        <div className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
-             onClick={e => e.stopPropagation()}>
-          {/* Drag handle on mobile */}
-          <div className="md:hidden flex justify-center pt-2 pb-1">
-            <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
+        <div ref={sheetRef}
+             className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
+             onClick={e => e.stopPropagation()}
+             onTouchStart={handleTouchStart}
+             onTouchMove={handleTouchMove}
+             onTouchEnd={handleTouchEnd}>
+          {/* Drag handle on mobile — visual swipe affordance */}
+          <div className="md:hidden flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing">
+            <div className="w-9 h-[5px] rounded-full bg-[var(--border-hover)]" />
           </div>
 
           {/* Header */}
@@ -420,19 +499,10 @@ export function Dashboard() {
                   {item.draft_type && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-[var(--text-secondary)]">{item.draft_type}</span>}
                 </div>
               </div>
-              <button onClick={() => { setModal(null); setFeedbackText(''); }} className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
+              <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {type === 'draft' && isCarouselItem(item) && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {item.carousel_pdf_url && <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="text-xs px-3.5 py-2 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-colors flex items-center gap-1.5">
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                  Download PDF
-                </a>}
-                {item.caption && <button onClick={() => handleCopy(item.caption)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--plum)] text-white font-semibold hover:opacity-90 transition-colors">Copy caption</button>}
-              </div>
-            )}
             {type === 'draft' && !isCarouselItem(item) && content && (
               <div className="flex flex-wrap gap-2 mt-3">
                 <button onClick={() => handleCopy(content)} className="text-xs px-3.5 py-2 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 transition-colors">Copy content</button>
@@ -442,7 +512,7 @@ export function Dashboard() {
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin modal-scroll-body">
             {type === 'topic' && (
               <div className="mb-4 space-y-3">
                 {item.url ? (
@@ -509,12 +579,54 @@ export function Dashboard() {
             )}
 
             {/* Carousel slide preview */}
-            {isDraft && isCarouselItem(item) && item.carousel_json && (() => {
+            {isDraft && isCarouselItem(item) && (() => {
+              // Try to parse carousel_json, falling back to content field
+              let carouselData: string | null = item.carousel_json || null;
+              if (!carouselData && item.content) {
+                // Agent may have written JSON into content field instead of carousel_json
+                try {
+                  const jsonMatch = item.content.match(/\{[\s\S]*"slides"[\s\S]*\}/);
+                  if (jsonMatch) carouselData = jsonMatch[0];
+                } catch {}
+              }
+              if (!carouselData) {
+                // Show content as plain text if available, otherwise show empty state
+                return item.content ? (
+                  <div className="space-y-3">
+                    <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                      <span className="text-lg">⚠️</span>
+                      <div>
+                        <p className="font-semibold mb-0.5">Carousel JSON not found</p>
+                        <p className="text-xs leading-relaxed">Agent output is shown as text below. The carousel may need to be re-generated.</p>
+                      </div>
+                    </div>
+                    <div dangerouslySetInnerHTML={{ __html: renderMd(extractDraftContent(item.content)) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />
+                  </div>
+                ) : (
+                  <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                    <span className="text-lg">📭</span>
+                    <div>
+                      <p className="font-semibold mb-0.5">No carousel content yet</p>
+                      <p className="text-xs leading-relaxed">The agent hasn't written back yet. Check the agent runner logs.</p>
+                    </div>
+                  </div>
+                );
+              }
               try {
-                // Handle raw newlines in JSON strings (agents sometimes output unescaped newlines)
-                const raw = typeof item.carousel_json === 'string' ? item.carousel_json : JSON.stringify(item.carousel_json);
-                const sanitized = raw.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
-                const carousel = JSON.parse(sanitized);
+                // Parse carousel JSON — handle both string and pre-parsed object from Supabase
+                let carousel: any;
+                if (typeof carouselData === 'object') {
+                  carousel = carouselData;
+                } else {
+                  // Try direct parse first, then sanitize if it fails
+                  try {
+                    carousel = JSON.parse(carouselData);
+                  } catch {
+                    // Handle raw unescaped newlines in JSON strings from agent output
+                    const sanitized = carouselData.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
+                    carousel = JSON.parse(sanitized);
+                  }
+                }
                 const slides = (carousel.slides || []).map((s: any) => ({
                   ...s,
                   title: s.title || s.heading || '',
@@ -523,8 +635,14 @@ export function Dashboard() {
                 }));
                 return (
                   <div className="space-y-3">
-                    {/* Slide previews — LinkedIn 4:5 ratio */}
-                    <div className="space-y-3">
+                    {/* Slide counter on mobile */}
+                    <div className="md:hidden flex items-center justify-center gap-1.5 py-1">
+                      <span className="text-2xs text-[var(--text-muted)] font-medium">Swipe to browse</span>
+                      <span className="text-2xs text-[var(--text-muted)]">&middot;</span>
+                      <span className="text-2xs text-[var(--text-muted)] font-semibold">{slides.length} slides</span>
+                    </div>
+                    {/* Mobile: horizontal snap scroll / Desktop: vertical stack */}
+                    <div className="md:space-y-3 flex md:block overflow-x-auto md:overflow-x-visible snap-x snap-mandatory scrollbar-hide gap-3 md:gap-0 -mx-5 px-5 md:mx-0 md:px-0">
                       {slides.map((slide: any, i: number) => {
                         const bgColors: Record<string, string> = {
                           hook: '#1A1A2E', dark: '#1A1A2E', charcoal: '#252545',
@@ -537,12 +655,12 @@ export function Dashboard() {
                         const textColor = isDark || isCoral ? '#FFFFFF' : '#1A1A2E';
                         const bgColor = bgColors[bg] || bgColors[slide.type] || '#FFF8F3';
                         return (
-                          <div key={i} className="rounded-xl overflow-hidden border border-[var(--border)] relative" style={{ backgroundColor: bgColor, color: textColor, aspectRatio: '4/5' }}>
+                          <div key={i} className="rounded-xl overflow-hidden border border-[var(--border)] relative snap-center flex-shrink-0 w-[85vw] md:w-auto" style={{ backgroundColor: bgColor, color: textColor, aspectRatio: '4/5' }}>
                             {/* Top accent bar */}
                             <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--accent)] z-10" />
-                            <div className="absolute inset-0 flex flex-col justify-center p-6 md:p-8">
+                            <div className="absolute inset-0 flex flex-col justify-center p-5 md:p-8">
                               {/* Slide number badge */}
-                              <div className="absolute top-4 right-4 text-2xs font-semibold uppercase tracking-wider opacity-40">{i + 1}/{slides.length}</div>
+                              <div className="absolute top-3 right-3 md:top-4 md:right-4 text-2xs font-semibold uppercase tracking-wider opacity-40">{i + 1}/{slides.length}</div>
                               {slide.emoji && <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: isDark ? 'rgba(232,123,53,0.15)' : 'rgba(232,123,53,0.1)' }}>{slide.emoji}</div>}
                               {slide.type === 'hook' && (
                                 <>
@@ -615,7 +733,20 @@ export function Dashboard() {
                     )}
                   </div>
                 );
-              } catch { return null; }
+              } catch {
+                return (
+                  <div className="space-y-3">
+                    <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                      <span className="text-lg">⚠️</span>
+                      <div>
+                        <p className="font-semibold mb-0.5">Carousel JSON parse error</p>
+                        <p className="text-xs leading-relaxed">The carousel data couldn't be parsed. Showing raw content below.</p>
+                      </div>
+                    </div>
+                    {content && <div dangerouslySetInnerHTML={{ __html: renderMd(content) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />}
+                  </div>
+                );
+              }
             })()}
 
             {!isBlog && !isCarouselItem(item) && content && (
@@ -715,10 +846,16 @@ export function Dashboard() {
                 );
               })()}
               {type === 'draft' && item.stage === 'ready_to_post' && (
-                <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
+                <div className="flex gap-2">
+                  <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
+                  {isCarouselItem(item) && item.carousel_pdf_url && (
+                    <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--accent)] text-white hover:opacity-90 transition-colors" title="Download PDF">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    </a>
+                  )}
+                </div>
               )}
               <div className="flex-1" />
-              <button onClick={() => { setModal(null); setFeedbackText(''); }} className="px-5 py-2.5 bg-gray-100 text-[var(--text-secondary)] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Close</button>
             </div>
           )}
         </div>
@@ -768,8 +905,8 @@ export function Dashboard() {
         ))}
       </nav>
 
-      {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] px-2 flex justify-around z-40 safe-bottom shadow-lg items-center" style={{ height: 'calc(var(--app-height, 100dvh) * 0.1)', minHeight: '44px' }}>
+      {/* Mobile Bottom Nav — in flow, not fixed, so kanban gets equal spacing */}
+      <nav className="md:hidden bg-white border-t border-[var(--border)] px-2 flex justify-around z-40 safe-bottom shadow-lg items-center flex-shrink-0" style={{ height: 'calc(var(--app-height, 100dvh) * 0.1)', minHeight: '44px' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex flex-col items-center py-1.5 px-2 rounded-lg transition-all relative min-w-[56px] ${tab === t.key ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
@@ -781,7 +918,7 @@ export function Dashboard() {
       </nav>
 
       {/* Content */}
-      <main className={`min-h-0 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4`} style={{ height: 'calc(var(--app-height, 100dvh) * 0.8)' }}>
+      <main className={`min-h-0 flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4`}>
         <div className="h-full">
           {tab === 'overview' && renderOverview()}
           {tab === 'linkedin' && renderLinkedIn()}
