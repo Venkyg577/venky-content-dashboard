@@ -48,9 +48,9 @@ export function Dashboard() {
     </Column>
   );
 
-  // === SWIPE TO DISMISS (mobile) — must be before early returns for hooks order ===
+  // === SWIPE TO DISMISS (mobile) — only from drag handle, not scroll body ===
   const sheetRef = useRef<HTMLDivElement>(null);
-  const dragState = useRef<{ startY: number; currentY: number; isDragging: boolean; scrollTop: number }>({ startY: 0, currentY: 0, isDragging: false, scrollTop: 0 });
+  const dragState = useRef<{ startY: number; isDragging: boolean }>({ startY: 0, isDragging: false });
 
   const closeModal = useCallback(() => {
     const sheet = sheetRef.current;
@@ -66,34 +66,19 @@ export function Dashboard() {
     }
   }, []);
 
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    const sheet = sheetRef.current;
-    if (!sheet) return;
-    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
-    const atTop = !scrollBody || scrollBody.scrollTop <= 0;
-    dragState.current = { startY: e.touches[0].clientY, currentY: e.touches[0].clientY, isDragging: atTop, scrollTop: scrollBody?.scrollTop || 0 };
+  // These handlers go on the drag handle ONLY, not the whole sheet
+  const handleHandleTouchStart = useCallback((e: React.TouchEvent) => {
+    dragState.current = { startY: e.touches[0].clientY, isDragging: true };
   }, []);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+  const handleHandleTouchMove = useCallback((e: React.TouchEvent) => {
     const ds = dragState.current;
     const sheet = sheetRef.current;
-    if (!sheet) return;
-    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
-    const touchY = e.touches[0].clientY;
-    const deltaY = touchY - ds.startY;
+    if (!sheet || !ds.isDragging) return;
 
-    if (!ds.isDragging) {
-      if (deltaY > 0 && scrollBody && scrollBody.scrollTop <= 0) {
-        ds.isDragging = true;
-        ds.startY = touchY;
-      } else {
-        return;
-      }
-    }
-
-    const offset = Math.max(0, touchY - ds.startY);
+    const offset = Math.max(0, e.touches[0].clientY - ds.startY);
     if (offset > 0) {
-      try { e.preventDefault(); } catch {}
+      e.stopPropagation();
       sheet.classList.add('sheet-dragging');
       const dampened = offset < 100 ? offset : 100 + (offset - 100) * 0.3;
       sheet.style.transform = `translateY(${dampened}px)`;
@@ -102,7 +87,7 @@ export function Dashboard() {
     }
   }, []);
 
-  const handleTouchEnd = useCallback(() => {
+  const handleHandleTouchEnd = useCallback(() => {
     const ds = dragState.current;
     const sheet = sheetRef.current;
     if (!sheet || !ds.isDragging) return;
@@ -111,7 +96,7 @@ export function Dashboard() {
     const match = sheet.style.transform.match(/translateY\((.+?)px\)/);
     const currentOffset = match ? parseFloat(match[1]) : 0;
 
-    if (currentOffset > 120) {
+    if (currentOffset > 100) {
       closeModal();
     } else {
       sheet.classList.remove('sheet-dragging');
@@ -478,13 +463,13 @@ export function Dashboard() {
         {/* Mobile: bottom sheet / Desktop: centered modal */}
         <div ref={sheetRef}
              className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
-             onClick={e => e.stopPropagation()}
-             onTouchStart={handleTouchStart}
-             onTouchMove={handleTouchMove}
-             onTouchEnd={handleTouchEnd}>
-          {/* Drag handle on mobile — visual swipe affordance */}
-          <div className="md:hidden flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing">
-            <div className="w-9 h-[5px] rounded-full bg-[var(--border-hover)]" />
+             onClick={e => e.stopPropagation()}>
+          {/* Drag handle on mobile — swipe down here to dismiss */}
+          <div className="md:hidden flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing touch-none"
+               onTouchStart={handleHandleTouchStart}
+               onTouchMove={handleHandleTouchMove}
+               onTouchEnd={handleHandleTouchEnd}>
+            <div className="w-10 h-[5px] rounded-full bg-[var(--border-hover)]" />
           </div>
 
           {/* Header */}
