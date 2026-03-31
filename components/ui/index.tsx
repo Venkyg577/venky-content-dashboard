@@ -30,7 +30,7 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
   t: Topic; showActions?: boolean;
   onView: (t: Topic) => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onReject: (t: Topic) => void;
   onArchive: (id: string) => void;
   onRestore?: (id: string) => void;
   requireAuth: (fn: () => void) => void;
@@ -81,7 +81,7 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
                   {actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
                   <div className="flex gap-1.5">
                     {actions.showApprove && <button onClick={() => requireAuth(() => onApprove(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--sage)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Approve</button>}
-                    {actions.showReject && <button onClick={() => requireAuth(() => onReject(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
+                    {actions.showReject && <button onClick={() => requireAuth(() => onReject(t))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
                     {actions.showArchive && <button onClick={() => requireAuth(() => onArchive(t.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
                   </div>
                 </>
@@ -104,7 +104,7 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
   d: Draft; revisionCount?: number; showActions?: boolean;
   onView: (d: Draft) => void;
   onApprove: (id: string) => void;
-  onReject: (id: string) => void;
+  onReject: (d: Draft) => void;
   onArchive: (id: string) => void;
   onRevise: (d: Draft) => void;
   onPublish: (id: string) => void;
@@ -161,7 +161,7 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
                   <div className="flex gap-1.5">
                     {actions.showApprove && <button onClick={() => requireAuth(() => onApprove(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--sage)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Approve</button>}
                     {actions.showRevise && <button onClick={() => requireAuth(() => onRevise(d))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--gold-light)] text-[var(--gold)] font-semibold hover:bg-amber-100 transition-colors">Revise</button>}
-                    {actions.showReject && <button onClick={() => requireAuth(() => onReject(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
+                    {actions.showReject && <button onClick={() => requireAuth(() => onReject(d))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
                     {actions.showArchive && <button onClick={() => requireAuth(() => onArchive(d.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
                   </div>
                 </>

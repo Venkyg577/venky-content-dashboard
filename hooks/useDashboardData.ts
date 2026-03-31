@@ -233,8 +233,16 @@ export function useDashboardData() {
     showToast(`Restored: ${t?.title?.substring(0, 30) || 'Topic'}`); load();
   };
 
-  const rejectTopic = async (id: string) => {
+  const rejectTopic = async (id: string, reason?: string) => {
     await supabase.from('topics').update({ status: 'rejected' }).eq('id', id);
+    if (reason && reason.trim()) {
+      await supabase.from('feedback').insert({
+        item_id: id,
+        item_type: 'topic',
+        action: 'rejection',
+        comment: reason.trim(),
+      });
+    }
     showToast('Rejected'); load();
   };
 
@@ -255,8 +263,16 @@ export function useDashboardData() {
     showToast('Marked published'); load();
   };
 
-  const rejectDraft = async (id: string) => {
+  const rejectDraft = async (id: string, reason?: string) => {
     await supabase.from('drafts').update({ status: 'rejected' }).eq('id', id);
+    if (reason && reason.trim()) {
+      await supabase.from('feedback').insert({
+        item_id: id,
+        item_type: 'draft',
+        action: 'rejection',
+        comment: reason.trim(),
+      });
+    }
     showToast('Rejected'); load();
   };
 
@@ -293,11 +309,11 @@ export function useDashboardData() {
   const rejectItem = async (type: 'topic' | 'draft', item: any, feedbackText: string) => {
     if (!feedbackText.trim()) return;
     if (type === 'topic') {
-      await supabase.from('topics').update({ status: 'archived' }).eq('id', item.id);
+      await supabase.from('topics').update({ status: 'rejected' }).eq('id', item.id);
     } else {
-      await supabase.from('drafts').update({ status: 'rejected', stage: 'archived' }).eq('id', item.id);
+      await supabase.from('drafts').update({ status: 'rejected' }).eq('id', item.id);
     }
-    await supabase.from('feedback').insert({ item_id: item.id, item_type: type, action: 'rejected', comment: feedbackText });
+    await supabase.from('feedback').insert({ item_id: item.id, item_type: type, action: 'rejection', comment: feedbackText });
     showToast('Rejected'); load();
   };
 
