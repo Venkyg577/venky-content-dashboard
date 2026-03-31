@@ -499,12 +499,13 @@ export function Dashboard() {
                   {item.draft_type && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-[var(--text-secondary)]">{item.draft_type}</span>}
                 </div>
               </div>
-              <button onClick={closeModal} className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
+              <button onClick={closeModal} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
+            {/* Desktop only — carousel header actions */}
             {type === 'draft' && isCarouselItem(item) && (
-              <div className="flex flex-wrap gap-2 mt-3">
+              <div className="hidden md:flex flex-wrap gap-2 mt-3">
                 {item.carousel_pdf_url && <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="text-xs px-3.5 py-2 rounded-lg bg-[var(--accent)] text-white font-semibold hover:opacity-90 transition-colors flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                   Download PDF
@@ -644,8 +645,14 @@ export function Dashboard() {
                 }));
                 return (
                   <div className="space-y-3">
-                    {/* Slide previews — LinkedIn 4:5 ratio */}
-                    <div className="space-y-3">
+                    {/* Slide counter on mobile */}
+                    <div className="md:hidden flex items-center justify-center gap-1.5 py-1">
+                      <span className="text-2xs text-[var(--text-muted)] font-medium">Swipe to browse</span>
+                      <span className="text-2xs text-[var(--text-muted)]">&middot;</span>
+                      <span className="text-2xs text-[var(--text-muted)] font-semibold">{slides.length} slides</span>
+                    </div>
+                    {/* Mobile: horizontal snap scroll / Desktop: vertical stack */}
+                    <div className="md:space-y-3 flex md:block overflow-x-auto md:overflow-x-visible snap-x snap-mandatory scrollbar-hide gap-3 md:gap-0 -mx-5 px-5 md:mx-0 md:px-0">
                       {slides.map((slide: any, i: number) => {
                         const bgColors: Record<string, string> = {
                           hook: '#1A1A2E', dark: '#1A1A2E', charcoal: '#252545',
@@ -658,12 +665,12 @@ export function Dashboard() {
                         const textColor = isDark || isCoral ? '#FFFFFF' : '#1A1A2E';
                         const bgColor = bgColors[bg] || bgColors[slide.type] || '#FFF8F3';
                         return (
-                          <div key={i} className="rounded-xl overflow-hidden border border-[var(--border)] relative" style={{ backgroundColor: bgColor, color: textColor, aspectRatio: '4/5' }}>
+                          <div key={i} className="rounded-xl overflow-hidden border border-[var(--border)] relative snap-center flex-shrink-0 w-[85vw] md:w-auto" style={{ backgroundColor: bgColor, color: textColor, aspectRatio: '4/5' }}>
                             {/* Top accent bar */}
                             <div className="absolute top-0 left-0 right-0 h-[3px] bg-[var(--accent)] z-10" />
-                            <div className="absolute inset-0 flex flex-col justify-center p-6 md:p-8">
+                            <div className="absolute inset-0 flex flex-col justify-center p-5 md:p-8">
                               {/* Slide number badge */}
-                              <div className="absolute top-4 right-4 text-2xs font-semibold uppercase tracking-wider opacity-40">{i + 1}/{slides.length}</div>
+                              <div className="absolute top-3 right-3 md:top-4 md:right-4 text-2xs font-semibold uppercase tracking-wider opacity-40">{i + 1}/{slides.length}</div>
                               {slide.emoji && <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: isDark ? 'rgba(232,123,53,0.15)' : 'rgba(232,123,53,0.1)' }}>{slide.emoji}</div>}
                               {slide.type === 'hook' && (
                                 <>
@@ -851,8 +858,22 @@ export function Dashboard() {
               {type === 'draft' && item.stage === 'ready_to_post' && (
                 <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
               )}
+              {/* Mobile carousel icon buttons */}
+              {type === 'draft' && isCarouselItem(item) && (
+                <div className="flex md:hidden gap-1.5">
+                  {item.carousel_pdf_url && (
+                    <a href={item.carousel_pdf_url} target="_blank" rel="noopener" className="w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--accent)] text-white hover:opacity-90 transition-colors" title="Download PDF">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                    </a>
+                  )}
+                  {item.caption && (
+                    <button onClick={() => handleCopy(item.caption)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-[var(--plum)] text-white hover:opacity-90 transition-colors" title="Copy caption">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" /></svg>
+                    </button>
+                  )}
+                </div>
+              )}
               <div className="flex-1" />
-              <button onClick={closeModal} className="px-5 py-2.5 bg-gray-100 text-[var(--text-secondary)] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Close</button>
             </div>
           )}
         </div>
