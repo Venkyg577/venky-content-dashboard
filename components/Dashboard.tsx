@@ -176,9 +176,9 @@ export function Dashboard() {
     ];
 
     return (
-      <div className="space-y-6 fade-in">
+      <div className="flex flex-col gap-4 md:gap-6 fade-in h-full">
         {/* Metrics */}
-        <div className="grid grid-cols-2 xs:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4">
+        <div className="grid grid-cols-2 xs:grid-cols-3 lg:grid-cols-5 gap-3 md:gap-4 flex-shrink-0">
           {metrics.map(m => (
             <div key={m.label} className="bg-white rounded-xl border border-[var(--border)] p-4 md:p-5 hover:shadow-md transition-shadow">
               <div className="flex items-start justify-between mb-3">
@@ -194,12 +194,12 @@ export function Dashboard() {
         </div>
 
         {/* Agent Runs */}
-        <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-sm">
-          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between">
+        <div className="bg-white rounded-xl border border-[var(--border)] overflow-hidden shadow-sm flex flex-col min-h-0 flex-1">
+          <div className="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between flex-shrink-0">
             <h3 className="font-semibold text-sm text-[var(--text-primary)]">Recent agent runs</h3>
             <span className="text-2xs text-[var(--text-muted)]">{data.runs.length} total</span>
           </div>
-          <div className="max-h-[500px] overflow-y-auto scrollbar-thin">
+          <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
             {/* Mobile: card layout / Desktop: table */}
             <div className="hidden md:block">
               <table className="w-full text-sm">
