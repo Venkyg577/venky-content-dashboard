@@ -905,8 +905,8 @@ export function Dashboard() {
         ))}
       </nav>
 
-      {/* Mobile Bottom Nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-[var(--border)] px-2 flex justify-around z-40 safe-bottom shadow-lg items-center" style={{ height: 'calc(var(--app-height, 100dvh) * 0.1)', minHeight: '44px' }}>
+      {/* Mobile Bottom Nav — in flow, not fixed, so kanban gets equal spacing */}
+      <nav className="md:hidden bg-white border-t border-[var(--border)] px-2 flex justify-around z-40 safe-bottom shadow-lg items-center flex-shrink-0" style={{ height: 'calc(var(--app-height, 100dvh) * 0.1)', minHeight: '44px' }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`flex flex-col items-center py-1.5 px-2 rounded-lg transition-all relative min-w-[56px] ${tab === t.key ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
@@ -918,7 +918,7 @@ export function Dashboard() {
       </nav>
 
       {/* Content */}
-      <main className={`min-h-0 flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4 mb-[calc(var(--app-height,100dvh)*0.1)] md:mb-0`}>
+      <main className={`min-h-0 flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4`}>
         <div className="h-full">
           {tab === 'overview' && renderOverview()}
           {tab === 'linkedin' && renderLinkedIn()}
