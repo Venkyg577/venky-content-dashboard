@@ -39,7 +39,14 @@
 .font-body { font-family: 'Outfit', 'Work Sans', system-ui, -apple-system, sans-serif; }
 .font-heading { font-family: Georgia, 'Times New Roman', serif; }
 
-* { -webkit-tap-highlight-color: transparent; }
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-overflow-scrolling: touch;
+}
+
+html {
+  scroll-behavior: smooth;
+}
 
 body {
   color: var(--text-primary);
@@ -54,6 +61,16 @@ body {
 .scrollbar-thin::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin:hover::-webkit-scrollbar-thumb { background: var(--border-hover); }
+
+/* GPU-accelerated smooth scrolling for all scroll containers */
+.scrollbar-thin,
+.scrollbar-hide,
+.kanban-scroll,
+.kanban-scroll > div > div:last-child {
+  will-change: scroll-position;
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+}
 
 /* Hide scrollbar but keep functionality */
 .scrollbar-hide::-webkit-scrollbar { display: none; }

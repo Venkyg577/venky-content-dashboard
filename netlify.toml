@@ -1,3 +1,9 @@
 [build]
   command = "npm run build"
   publish = "out"
+
+# Enable branch deploys for dev branch
+# dev branch will be available at: dev--venky-dashboard.netlify.app
+[context.branch-deploy]
+  command = "npm run build"
+  publish = "out"

@@ -509,10 +509,42 @@ export function Dashboard() {
             )}
 
             {/* Carousel slide preview */}
-            {isDraft && isCarouselItem(item) && item.carousel_json && (() => {
+            {isDraft && isCarouselItem(item) && (() => {
+              // Try to parse carousel_json, falling back to content field
+              let carouselData: string | null = item.carousel_json || null;
+              if (!carouselData && item.content) {
+                // Agent may have written JSON into content field instead of carousel_json
+                try {
+                  const jsonMatch = item.content.match(/\{[\s\S]*"slides"[\s\S]*\}/);
+                  if (jsonMatch) carouselData = jsonMatch[0];
+                } catch {}
+              }
+              if (!carouselData) {
+                // Show content as plain text if available, otherwise show empty state
+                return item.content ? (
+                  <div className="space-y-3">
+                    <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                      <span className="text-lg">⚠️</span>
+                      <div>
+                        <p className="font-semibold mb-0.5">Carousel JSON not found</p>
+                        <p className="text-xs leading-relaxed">Agent output is shown as text below. The carousel may need to be re-generated.</p>
+                      </div>
+                    </div>
+                    <div dangerouslySetInnerHTML={{ __html: renderMd(extractDraftContent(item.content)) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />
+                  </div>
+                ) : (
+                  <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                    <span className="text-lg">📭</span>
+                    <div>
+                      <p className="font-semibold mb-0.5">No carousel content yet</p>
+                      <p className="text-xs leading-relaxed">The agent hasn't written back yet. Check the agent runner logs.</p>
+                    </div>
+                  </div>
+                );
+              }
               try {
                 // Handle raw newlines in JSON strings (agents sometimes output unescaped newlines)
-                const raw = typeof item.carousel_json === 'string' ? item.carousel_json : JSON.stringify(item.carousel_json);
+                const raw = typeof carouselData === 'string' ? carouselData : JSON.stringify(carouselData);
                 const sanitized = raw.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
                 const carousel = JSON.parse(sanitized);
                 const slides = (carousel.slides || []).map((s: any) => ({
@@ -615,7 +647,20 @@ export function Dashboard() {
                     )}
                   </div>
                 );
-              } catch { return null; }
+              } catch {
+                return (
+                  <div className="space-y-3">
+                    <div className="bg-[var(--gold-light)] border border-amber-200 rounded-xl p-4 text-sm text-amber-800 flex items-start gap-3">
+                      <span className="text-lg">⚠️</span>
+                      <div>
+                        <p className="font-semibold mb-0.5">Carousel JSON parse error</p>
+                        <p className="text-xs leading-relaxed">The carousel data couldn't be parsed. Showing raw content below.</p>
+                      </div>
+                    </div>
+                    {content && <div dangerouslySetInnerHTML={{ __html: renderMd(content) }} className="text-sm leading-relaxed text-[var(--text-secondary)]" />}
+                  </div>
+                );
+              }
             })()}
 
             {!isBlog && !isCarouselItem(item) && content && (
