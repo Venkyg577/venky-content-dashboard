@@ -543,10 +543,20 @@ export function Dashboard() {
                 );
               }
               try {
-                // Handle raw newlines in JSON strings (agents sometimes output unescaped newlines)
-                const raw = typeof carouselData === 'string' ? carouselData : JSON.stringify(carouselData);
-                const sanitized = raw.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
-                const carousel = JSON.parse(sanitized);
+                // Parse carousel JSON — handle both string and pre-parsed object from Supabase
+                let carousel: any;
+                if (typeof carouselData === 'object') {
+                  carousel = carouselData;
+                } else {
+                  // Try direct parse first, then sanitize if it fails
+                  try {
+                    carousel = JSON.parse(carouselData);
+                  } catch {
+                    // Handle raw unescaped newlines in JSON strings from agent output
+                    const sanitized = carouselData.replace(/[\n\r\t]/g, (c: string) => c === '\n' ? '\\n' : c === '\r' ? '\\r' : '\\t');
+                    carousel = JSON.parse(sanitized);
+                  }
+                }
                 const slides = (carousel.slides || []).map((s: any) => ({
                   ...s,
                   title: s.title || s.heading || '',
