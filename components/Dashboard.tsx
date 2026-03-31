@@ -919,7 +919,8 @@ export function Dashboard() {
 
       {/* Content */}
       <main className={`min-h-0 flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4`}>
-        <div className="h-full">
+        {/* h-full for kanban tabs (fixed columns), min-h-full for scrollable tabs */}
+        <div className={tab === 'overview' || tab === 'calendar' ? 'min-h-full' : 'h-full'}>
           {tab === 'overview' && renderOverview()}
           {tab === 'linkedin' && renderLinkedIn()}
           {tab === 'carousels' && renderCarousels()}
