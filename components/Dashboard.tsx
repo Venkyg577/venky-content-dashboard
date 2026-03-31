@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { Topic, Draft, Feedback, isBlogItem, isBlogTopic, isCarouselItem } from '@/lib/supabase';
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState, ArchivedItemRow, ArchivedEntry } from '@/components/ui';
@@ -388,6 +388,89 @@ export function Dashboard() {
     );
   };
 
+  // === SWIPE TO DISMISS (mobile) ===
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef<{ startY: number; currentY: number; isDragging: boolean; scrollTop: number }>({ startY: 0, currentY: 0, isDragging: false, scrollTop: 0 });
+
+  const closeModal = useCallback(() => {
+    const sheet = sheetRef.current;
+    if (sheet) {
+      sheet.classList.remove('sheet-dragging');
+      sheet.classList.add('sheet-snapping');
+      sheet.style.transform = 'translateY(100%)';
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = '0';
+      setTimeout(() => { setModal(null); setFeedbackText(''); }, 350);
+    } else {
+      setModal(null); setFeedbackText('');
+    }
+  }, []);
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    // Only start drag if scrolled to top of modal body
+    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
+    const atTop = !scrollBody || scrollBody.scrollTop <= 0;
+    dragState.current = { startY: e.touches[0].clientY, currentY: e.touches[0].clientY, isDragging: atTop, scrollTop: scrollBody?.scrollTop || 0 };
+  }, []);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    const ds = dragState.current;
+    const sheet = sheetRef.current;
+    if (!sheet) return;
+    const scrollBody = sheet.querySelector('.modal-scroll-body') as HTMLElement;
+    const touchY = e.touches[0].clientY;
+    const deltaY = touchY - ds.startY;
+
+    // If not dragging yet, check if we should start (scrolled to top + pulling down)
+    if (!ds.isDragging) {
+      if (deltaY > 0 && scrollBody && scrollBody.scrollTop <= 0) {
+        ds.isDragging = true;
+        ds.startY = touchY;
+      } else {
+        return;
+      }
+    }
+
+    const offset = Math.max(0, touchY - ds.startY);
+    if (offset > 0) {
+      e.preventDefault();
+      sheet.classList.add('sheet-dragging');
+      // Rubber band effect — diminishing returns past 100px
+      const dampened = offset < 100 ? offset : 100 + (offset - 100) * 0.3;
+      sheet.style.transform = `translateY(${dampened}px)`;
+      // Fade backdrop proportionally
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = `${Math.max(0.2, 1 - offset / 400)}`;
+    }
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    const ds = dragState.current;
+    const sheet = sheetRef.current;
+    if (!sheet || !ds.isDragging) return;
+    const offset = ds.currentY - ds.startY;
+    ds.isDragging = false;
+
+    // Parse current translateY from style
+    const match = sheet.style.transform.match(/translateY\((.+?)px\)/);
+    const currentOffset = match ? parseFloat(match[1]) : 0;
+
+    if (currentOffset > 120) {
+      // Dismiss
+      closeModal();
+    } else {
+      // Snap back
+      sheet.classList.remove('sheet-dragging');
+      sheet.classList.add('sheet-snapping');
+      sheet.style.transform = 'translateY(0)';
+      const backdrop = sheet.parentElement;
+      if (backdrop) backdrop.style.opacity = '1';
+      setTimeout(() => { sheet.classList.remove('sheet-snapping'); }, 350);
+    }
+  }, [closeModal]);
+
   // === MODAL ===
   const renderModal = () => {
     if (!modal) return null;
@@ -399,13 +482,17 @@ export function Dashboard() {
     const isBlog = isBlogItem(item);
 
     return (
-      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end md:items-center justify-center" onClick={() => { setModal(null); setFeedbackText(''); }}>
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-end md:items-center justify-center modal-backdrop" style={{ transition: 'opacity 0.35s ease' }} onClick={closeModal}>
         {/* Mobile: bottom sheet / Desktop: centered modal */}
-        <div className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
-             onClick={e => e.stopPropagation()}>
-          {/* Drag handle on mobile */}
-          <div className="md:hidden flex justify-center pt-2 pb-1">
-            <div className="w-10 h-1 rounded-full bg-[var(--border)]" />
+        <div ref={sheetRef}
+             className="bg-white w-full md:rounded-2xl md:max-w-3xl md:w-full md:max-h-[85vh] max-h-[92dvh] flex flex-col shadow-2xl border-t md:border border-[var(--border)] overflow-hidden rounded-t-2xl md:rounded-2xl slide-up-sheet md:slide-up"
+             onClick={e => e.stopPropagation()}
+             onTouchStart={handleTouchStart}
+             onTouchMove={handleTouchMove}
+             onTouchEnd={handleTouchEnd}>
+          {/* Drag handle on mobile — visual swipe affordance */}
+          <div className="md:hidden flex justify-center pt-2.5 pb-1.5 cursor-grab active:cursor-grabbing">
+            <div className="w-9 h-[5px] rounded-full bg-[var(--border-hover)]" />
           </div>
 
           {/* Header */}
@@ -420,7 +507,7 @@ export function Dashboard() {
                   {item.draft_type && <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-[var(--text-secondary)]">{item.draft_type}</span>}
                 </div>
               </div>
-              <button onClick={() => { setModal(null); setFeedbackText(''); }} className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
+              <button onClick={closeModal} className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg hover:bg-gray-100 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors flex-shrink-0">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
@@ -442,7 +529,7 @@ export function Dashboard() {
           </div>
 
           {/* Body */}
-          <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin">
+          <div className="flex-1 overflow-y-auto px-5 py-4 scrollbar-thin modal-scroll-body">
             {type === 'topic' && (
               <div className="mb-4 space-y-3">
                 {item.url ? (
@@ -773,7 +860,7 @@ export function Dashboard() {
                 <button onClick={() => data.requireAuth(() => { data.publishDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Mark published</button>
               )}
               <div className="flex-1" />
-              <button onClick={() => { setModal(null); setFeedbackText(''); }} className="px-5 py-2.5 bg-gray-100 text-[var(--text-secondary)] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Close</button>
+              <button onClick={closeModal} className="px-5 py-2.5 bg-gray-100 text-[var(--text-secondary)] rounded-xl text-sm font-semibold hover:bg-gray-200 transition-colors">Close</button>
             </div>
           )}
         </div>
