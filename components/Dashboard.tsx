@@ -918,7 +918,7 @@ export function Dashboard() {
       </nav>
 
       {/* Content */}
-      <main className={`min-h-0 flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4 pb-0 md:pb-4`}>
+      <main className={`min-h-0 flex-1 ${tab === 'overview' || tab === 'calendar' ? 'overflow-y-auto' : 'overflow-hidden'} p-2 md:p-4 mb-[calc(var(--app-height,100dvh)*0.1)] md:mb-0`}>
         <div className="h-full">
           {tab === 'overview' && renderOverview()}
           {tab === 'linkedin' && renderLinkedIn()}
