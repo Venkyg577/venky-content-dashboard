@@ -222,6 +222,16 @@ export function useDashboardData() {
     }
   };
 
+  // Helper functions
+  const rejectItem = async (type: 'topic' | 'draft', item: any, reason: string) => {
+    if (type === 'topic') await rejectTopic(item.id, reason);
+    else await rejectDraft(item.id, reason);
+  };
+
+  const reviseItem = async (type: 'topic' | 'draft', item: any, feedbackText: string) => {
+    if (type === 'draft') await reviseDraft(item.id, feedbackText);
+  };
+
   // Computed properties for metrics
   const pendingLinkedin = topics.filter(t => 
     (t.channel === 'linkedin' || t.channel === 'both') && 
