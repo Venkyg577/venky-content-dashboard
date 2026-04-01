@@ -222,6 +222,31 @@ export function useDashboardData() {
     }
   };
 
+  // Computed properties for metrics
+  const pendingLinkedin = topics.filter(t => 
+    (t.channel === 'linkedin' || t.channel === 'both') && 
+    t.status === 'pending'
+  ).length + drafts.filter(d => 
+    d.channel === 'linkedin' && 
+    d.status === 'pending'
+  ).length;
+
+  const pendingCarousels = topics.filter(t => 
+    t.channel === 'carousel' && 
+    t.status === 'pending'
+  ).length + drafts.filter(d => 
+    d.draft_type === 'carousel' && 
+    d.status === 'pending'
+  ).length;
+
+  const pendingBlogs = topics.filter(t => 
+    (t.channel === 'blog' || t.channel === 'both') && 
+    t.status === 'pending'
+  ).length + drafts.filter(d => 
+    d.channel === 'blog' && 
+    d.status === 'pending'
+  ).length;
+
   return {
     topics,
     drafts,
@@ -244,5 +269,8 @@ export function useDashboardData() {
     rejectDraft,
     reviseDraft,
     publishDraft,
+    pendingLinkedin,
+    pendingCarousels,
+    pendingBlogs,
   };
 }
