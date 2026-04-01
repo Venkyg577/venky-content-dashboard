@@ -98,24 +98,24 @@ export function useDashboardData() {
     const isBlog = t.channel === 'blog' || t.channel === 'both';
 
     if (isLinkedIn && !isBlog) {
-      // SCOUTED → RESEARCHED: trigger Owl research
+      // SCOUTED → RESEARCHING: trigger Owl research
       if (t.stage === 'scouted') {
-        await supabase.from('topics').update({ status: 'pending', stage: 'researched' }).eq('id', id);
+        await supabase.from('topics').update({ status: 'pending', stage: 'researching' }).eq('id', id);
         await supabase.from('agent_tasks').insert({
           task_type: 'research', agent: 'owl', ref_id: id, ref_title: t.title,
           payload: { topic_title: t.title, topic_url: t.url, topic_source: t.source },
         });
-        notifySlack(SLACK_CHANNEL_AIMY, `Topic sent to research: ${t.title}`);
-        showToast('Sent to Owl for research'); load(); return;
+        notifySlack(SLACK_CHANNEL_AIMY, `🚀 SPAWN_AGENT: owl\nTask: research\nRef ID: ${id}\nTitle: ${t.title}`);
+        showToast('✅ Owl spawning for research'); load(); return;
       }
-      // RESEARCHED → DRAFT: trigger Bee drafting
+      // RESEARCHED → DRAFTING: trigger Bee drafting
       if (t.stage === 'researched') {
         const { data: existing } = await supabase.from('drafts').select('id').eq('topic', t.title).eq('channel', 'linkedin').neq('status', 'rejected').limit(1);
         let draftId: string | null = null;
         if (!existing || existing.length === 0) {
           const { data: newDraft } = await supabase.from('drafts').insert({
             topic: t.title, channel: 'linkedin', draft_type: 'commentary',
-            stage: 'drafted', status: 'pending', content: '', word_count: 0, created_at: Date.now()
+            stage: 'drafting', status: 'pending', content: '', word_count: 0, created_at: Date.now()
           }).select('id').single();
           draftId = newDraft?.id || null;
         } else {
@@ -128,31 +128,31 @@ export function useDashboardData() {
             payload: { topic_title: t.title, topic_summary: t.summary || '' },
           });
         }
-        notifySlack(SLACK_CHANNEL_AIMY, `Research approved, drafting: ${t.title}`);
-        showToast('Draft created, sent to Bee'); load(); return;
+        notifySlack(SLACK_CHANNEL_AIMY, `🚀 SPAWN_AGENT: bee\nTask: draft\nRef ID: ${draftId}\nTitle: ${t.title}`);
+        showToast('✅ Bee spawning for draft'); load(); return;
       }
     }
 
     const isCarousel = t.channel === 'carousel';
     if (isCarousel) {
-      // CAROUSEL SCOUTED → RESEARCHED: trigger Owl research (same as LinkedIn)
+      // CAROUSEL SCOUTED → RESEARCHING: trigger Owl research
       if (t.stage === 'scouted') {
-        await supabase.from('topics').update({ status: 'pending', stage: 'researched' }).eq('id', id);
+        await supabase.from('topics').update({ status: 'pending', stage: 'researching' }).eq('id', id);
         await supabase.from('agent_tasks').insert({
           task_type: 'research', agent: 'owl', ref_id: id, ref_title: t.title,
           payload: { topic_title: t.title, topic_url: t.url, topic_source: t.source },
         });
-        notifySlack(SLACK_CHANNEL_AIMY, `Carousel topic sent to research: ${t.title}`);
-        showToast('Sent to Owl for research'); load(); return;
+        notifySlack(SLACK_CHANNEL_AIMY, `🚀 SPAWN_AGENT: owl\nTask: research\nRef ID: ${id}\nTitle: ${t.title} (carousel)`);
+        showToast('✅ Owl spawning for carousel research'); load(); return;
       }
-      // CAROUSEL RESEARCHED → DRAFT: trigger Bee carousel drafting
+      // CAROUSEL RESEARCHED → DRAFTING: trigger Bee carousel drafting
       if (t.stage === 'researched') {
         const { data: existing } = await supabase.from('drafts').select('id').eq('topic', t.title).eq('draft_type', 'carousel').neq('status', 'rejected').limit(1);
         let draftId: string | null = null;
         if (!existing || existing.length === 0) {
           const { data: newDraft } = await supabase.from('drafts').insert({
             topic: t.title, channel: 'carousel', draft_type: 'carousel',
-            stage: 'drafted', status: 'pending', content: '', word_count: 0, created_at: Date.now()
+            stage: 'drafting', status: 'pending', content: '', word_count: 0, created_at: Date.now()
           }).select('id').single();
           draftId = newDraft?.id || null;
         } else {
@@ -165,30 +165,30 @@ export function useDashboardData() {
             payload: { topic_title: t.title, topic_summary: t.summary || '' },
           });
         }
-        notifySlack(SLACK_CHANNEL_AIMY, `Carousel research approved, sent to Bee for slides: ${t.title}`);
-        showToast('Sent to Bee for carousel slides'); load(); return;
+        notifySlack(SLACK_CHANNEL_AIMY, `🚀 SPAWN_AGENT: bee\nTask: carousel_draft\nRef ID: ${draftId}\nTitle: ${t.title}`);
+        showToast('✅ Bee spawning for carousel'); load(); return;
       }
     }
 
     if (isBlog) {
-      // BLOG SCOUTED → RESEARCHED: trigger Stork research
+      // BLOG SCOUTED → RESEARCHING: trigger Stork research
       if (t.stage === 'scouted') {
-        await supabase.from('topics').update({ status: 'pending', stage: 'researched' }).eq('id', id);
+        await supabase.from('topics').update({ status: 'pending', stage: 'researching' }).eq('id', id);
         await supabase.from('agent_tasks').insert({
           task_type: 'blog_research', agent: 'stork', ref_id: id, ref_title: t.title,
           payload: { topic_title: t.title, topic_url: t.url, topic_source: t.source },
         });
-        notifySlack(SLACK_CHANNEL_BLOG, `Blog topic sent to Stork for research: ${t.title}`);
-        showToast('Sent to Stork for research'); load(); return;
+        notifySlack(SLACK_CHANNEL_AIMY, `🚀 SPAWN_AGENT: stork\nTask: blog_research\nRef ID: ${id}\nTitle: ${t.title}`);
+        showToast('✅ Stork spawning for blog research'); load(); return;
       }
-      // BLOG RESEARCHED → DRAFT: trigger Crane drafting
+      // BLOG RESEARCHED → DRAFTING: trigger Crane drafting
       if (t.stage === 'researched') {
         const { data: existing } = await supabase.from('drafts').select('id').eq('topic', t.title).eq('channel', 'blog').neq('status', 'rejected').limit(1);
         let draftId: string | null = null;
         if (!existing || existing.length === 0) {
           const { data: newDraft, error: draftErr } = await supabase.from('drafts').insert({
             topic: t.title, channel: 'blog', draft_type: 'blog',
-            stage: 'drafted', status: 'pending', content: '', word_count: 0, created_at: Date.now()
+            stage: 'drafting', status: 'pending', content: '', word_count: 0, created_at: Date.now()
           }).select('id').single();
           if (draftErr) { showToast('Draft creation failed'); return; }
           draftId = newDraft?.id || null;
@@ -202,8 +202,8 @@ export function useDashboardData() {
             payload: { topic_title: t.title, topic_summary: t.summary || '' },
           });
         }
-        notifySlack(SLACK_CHANNEL_BLOG, `Blog research approved, sent to Crane for drafting: ${t.title}`);
-        showToast('Sent to Crane for drafting'); load(); return;
+        notifySlack(SLACK_CHANNEL_AIMY, `🚀 SPAWN_AGENT: crane\nTask: blog_draft\nRef ID: ${draftId}\nTitle: ${t.title}`);
+        showToast('✅ Crane spawning for blog draft'); load(); return;
       }
     }
 
