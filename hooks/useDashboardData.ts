@@ -279,6 +279,8 @@ export function useDashboardData() {
     rejectDraft,
     reviseDraft,
     publishDraft,
+    rejectItem,
+    reviseItem,
     pendingLinkedin,
     pendingCarousels,
     pendingBlogs,
