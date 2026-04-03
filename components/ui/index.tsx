@@ -1,9 +1,9 @@
 'use client';
 
 import React from 'react';
-import { Topic, Draft, isBlogItem } from '@/lib/supabase';
+import { Topic, Draft, AgentTask, isBlogItem } from '@/lib/supabase';
 import { ago, fitColor, copyToClipboard, stripFrontmatter, parseResearchBrief, extractDraftContent, dedup } from '@/lib/format';
-import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
+import { getTopicActions, getDraftActions, getTaskStatus } from '@/lib/action-helpers';
 
 // === KANBAN COLUMN ===
 export function Column({ title, count, children, accent = 'var(--royal)' }: {
@@ -26,8 +26,8 @@ export function Column({ title, count, children, accent = 'var(--royal)' }: {
 }
 
 // === TOPIC CARD ===
-export function TopicCard({ t, showActions = true, onView, onApprove, onReject, onArchive, onRestore, requireAuth }: {
-  t: Topic; showActions?: boolean;
+export function TopicCard({ t, showActions = true, agentTasks = [], onView, onApprove, onReject, onArchive, onRestore, requireAuth }: {
+  t: Topic; showActions?: boolean; agentTasks?: AgentTask[];
   onView: (t: Topic) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
@@ -75,15 +75,25 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
         {showActions && t.status !== 'archived' && (
           <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
             {(() => {
-              const actions = getTopicActions(t.stage, t.status);
+              const taskStatus = getTaskStatus(t.id, agentTasks);
+              const actions = getTopicActions(t.stage, t.status, taskStatus);
               return (
                 <>
-                  {actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
-                  <div className="flex gap-1.5">
-                    {actions.showApprove && <button onClick={() => requireAuth(() => onApprove(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--sage)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Approve</button>}
-                    {actions.showReject && <button onClick={() => requireAuth(() => onReject(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
-                    {actions.showArchive && <button onClick={() => requireAuth(() => onArchive(t.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
-                  </div>
+                  {taskStatus.hasActiveTask ? (
+                    <div className="flex flex-col gap-1">
+                      <p className="text-2xs font-semibold" style={{ color: taskStatus.statusColor }}>{taskStatus.statusLabel}</p>
+                      {taskStatus.retryInfo && <p className="text-2xs text-[var(--text-muted)]">{taskStatus.retryInfo}</p>}
+                    </div>
+                  ) : (
+                    <>
+                      {actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
+                      <div className="flex gap-1.5">
+                        {actions.showApprove && <button onClick={() => requireAuth(() => onApprove(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--sage)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Approve</button>}
+                        {actions.showReject && <button onClick={() => requireAuth(() => onReject(t.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
+                        {actions.showArchive && <button onClick={() => requireAuth(() => onArchive(t.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}
@@ -100,8 +110,8 @@ export function TopicCard({ t, showActions = true, onView, onApprove, onReject, 
 }
 
 // === DRAFT CARD ===
-export function DraftCard({ d, revisionCount = 0, showActions = true, onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, onRestore, requireAuth }: {
-  d: Draft; revisionCount?: number; showActions?: boolean;
+export function DraftCard({ d, revisionCount = 0, showActions = true, agentTasks = [], onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, onRestore, requireAuth }: {
+  d: Draft; revisionCount?: number; showActions?: boolean; agentTasks?: AgentTask[];
   onView: (d: Draft) => void;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
@@ -154,16 +164,26 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, onView, on
         {showActions && d.stage === 'drafted' && d.status !== 'archived' && (
           <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
             {(() => {
-              const actions = getDraftActions(d.stage, d.status);
+              const taskStatus = getTaskStatus(d.id, agentTasks);
+              const actions = getDraftActions(d.stage, d.status, taskStatus);
               return (
                 <>
-                  {actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
-                  <div className="flex gap-1.5">
-                    {actions.showApprove && <button onClick={() => requireAuth(() => onApprove(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--sage)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Approve</button>}
-                    {actions.showRevise && <button onClick={() => requireAuth(() => onRevise(d))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--gold-light)] text-[var(--gold)] font-semibold hover:bg-amber-100 transition-colors">Revise</button>}
-                    {actions.showReject && <button onClick={() => requireAuth(() => onReject(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
-                    {actions.showArchive && <button onClick={() => requireAuth(() => onArchive(d.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
-                  </div>
+                  {taskStatus.hasActiveTask ? (
+                    <div className="flex flex-col gap-1">
+                      <p className="text-2xs font-semibold" style={{ color: taskStatus.statusColor }}>{taskStatus.statusLabel}</p>
+                      {taskStatus.retryInfo && <p className="text-2xs text-[var(--text-muted)]">{taskStatus.retryInfo}</p>}
+                    </div>
+                  ) : (
+                    <>
+                      {actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
+                      <div className="flex gap-1.5">
+                        {actions.showApprove && <button onClick={() => requireAuth(() => onApprove(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--sage)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all">Approve</button>}
+                        {actions.showRevise && <button onClick={() => requireAuth(() => onRevise(d))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--gold-light)] text-[var(--gold)] font-semibold hover:bg-amber-100 transition-colors">Revise</button>}
+                        {actions.showReject && <button onClick={() => requireAuth(() => onReject(d.id))} className="flex-1 text-xs py-2 rounded-lg bg-[var(--red-light)] text-[var(--red)] font-semibold hover:bg-red-100 transition-colors">Reject</button>}
+                        {actions.showArchive && <button onClick={() => requireAuth(() => onArchive(d.id))} className="text-xs px-3 py-2 rounded-lg bg-[var(--surface)] text-[var(--text-secondary)] font-semibold hover:bg-gray-200 transition-colors">Archive</button>}
+                      </div>
+                    </>
+                  )}
                 </>
               );
             })()}

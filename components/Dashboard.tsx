@@ -123,6 +123,7 @@ export function Dashboard() {
   // Card action handlers
   const topicCardProps = (t: Topic, opts?: { showRestore?: boolean }) => ({
     t,
+    agentTasks: data.agentTasks || [],
     onView: (t: Topic) => setModal({ type: 'topic' as const, item: t, mode: 'view' as const }),
     onApprove: data.approveTopic,
     onReject: data.rejectTopic,
@@ -133,6 +134,7 @@ export function Dashboard() {
 
   const draftCardProps = (d: Draft, opts?: { showRestore?: boolean }) => ({
     d,
+    agentTasks: data.agentTasks || [],
     revisionCount: revisionCounts[d.id] || 0,
     onView: (d: Draft) => setModal({ type: 'draft' as const, item: d, mode: 'view' as const }),
     onApprove: data.approveDraft,
