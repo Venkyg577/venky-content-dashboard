@@ -69,7 +69,6 @@ export function useDashboardData() {
   };
 
   const requireAuth = (fn: () => void) => {
-    console.log('[DEBUG] requireAuth called, authed=', authed);
     if (authed) return fn();
     const dashPw = process.env.NEXT_PUBLIC_DASHBOARD_PASSWORD;
     if (!dashPw) { setAuth(true); return fn(); }
@@ -82,20 +81,16 @@ export function useDashboardData() {
 
   // === MUTATIONS ===
   const approveTopic = async (id: string) => {
-    console.log('[DEBUG] approveTopic called with id=', id);
     try {
       const response = await fetch(`${API_BASE}/approve-topic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topicId: id }),
       });
-      console.log('[DEBUG] approveTopic response status=', response.status);
       const result = await response.json();
-      console.log('[DEBUG] approveTopic result=', result);
       if (result.message) showToast(result.message);
       load();
     } catch (error) {
-      console.error('[DEBUG] approveTopic error=', error);
       showToast('Failed to approve topic');
       console.error(error);
     }
