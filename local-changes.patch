@@ -1,0 +1,30 @@
+This file contains the local changes that were discarded on 2026-03-31 before pulling remote.
+Use `git apply local-changes.patch` won't work — this is for reference only.
+
+=== Summary of Local Changes ===
+
+1. lib/format.ts — Added parseResearchBrief() and hasThinkingContent() helpers
+   - Parses ## sections from research briefs
+   - Strips thinking/process narration lines from agent output
+
+2. components/Dashboard.tsx — Enhanced research brief modal
+   - Uses parseResearchBrief() to render structured sections with color-coded headers
+   - Shows "Contains raw agent output" badge when thinking content detected
+   - Renders markdown in sections via dangerouslySetInnerHTML
+
+3. components/ui/index.tsx — TopicCard snippet uses parseResearchBrief()
+   - Cleaner snippet extraction from first section instead of raw text
+
+4. hooks/useDashboardData.ts — Added Supabase Realtime subscriptions
+   - Listens to postgres_changes on topics, drafts, agent_tasks, runs tables
+   - Instant dashboard refresh when agents write back to DB
+
+5. scripts/agent-runner.js — Major improvements
+   - Added extractCleanOutput() to strip thinking/process narration from agent output
+   - Rewrote all prompts (research, draft, revise) to be more structured
+   - Research prompt: strict ## section format, "no preamble" instructions
+   - Draft/revise prompts: --- marker format, better Venky voice guidelines
+   - Output cleaning: strips thinking patterns, extracts content between markers
+
+6. docs/supabase-schema.sql — Added Realtime publication commands
+   - ALTER PUBLICATION supabase_realtime ADD TABLE for topics, drafts, agent_tasks, runs

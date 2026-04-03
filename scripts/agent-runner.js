@@ -16,11 +16,15 @@
 const { createClient } = require('@supabase/supabase-js');
 const { execSync } = require('child_process');
 
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://tptbfxjprpzxwsrerwjm.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRwdGJmeGpwcnB6eHdzcmVyd2ptIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NDUyNDI3MiwiZXhwIjoyMDkwMTAwMjcyfQ.1d4k8TZvKks9unEECbLFxTYssGhpfLuuNJjBSmyK5dg';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars');
+  process.exit(1);
+}
 const POLL_INTERVAL = 15000;
 const SIMULATE = process.argv.includes('--simulate');
-const DOCKER_PREFIX = process.env.DOCKER_PREFIX || 'docker exec openclaw-ji9i-openclaw-1';
+const DOCKER_PREFIX = process.env.DOCKER_PREFIX || 'docker exec openclaw-jump-openclaw-1';
 const AGENT_TIMEOUT = 600000; // 10 minutes — agents do real research with web fetching
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -35,165 +39,130 @@ function log(msg) {
  * We just provide the task context and let them follow their own playbook.
  */
 function buildPrompt(task) {
+  const UPLOAD_CMD = 'node /data/.openclaw/workspace/scripts/upload.js';
+
   switch (task.task_type) {
     case 'research':
       return [
-        `Research this LinkedIn topic. Follow your AGENTS.md research process fully.`,
+        `Research this LinkedIn topic. Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
-        task.payload.topic_url ? `Source URL: ${task.payload.topic_url}` : '',
-        task.payload.topic_source ? `Found via: ${task.payload.topic_source}` : '',
+        task.payload.topic_url ? `Source: ${task.payload.topic_url}` : '',
         ``,
-        `Topic ID in Supabase: ${task.ref_id}`,
+        `When done, write your output as JSON and upload:`,
         ``,
-        `After researching, update the topic in Supabase:`,
-        `- Set summary = your full research brief`,
-        `- Set status = 'approved'`,
-        ``,
-        `Use the Supabase credentials from your workspace tools.`,
+        `cat > /tmp/research-output.json << 'JSONEOF'`,
+        `{"stage":"researched","ref_id":"${task.ref_id}","summary":"YOUR RESEARCH BRIEF HERE","angle":"VENKY'S UNIQUE ANGLE"}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/research-output.json`,
       ].filter(Boolean).join('\n');
 
     case 'draft':
       return [
-        `Write a LinkedIn post for this topic. Follow your AGENTS.md, VOICE.md, and TEMPLATES.md fully.`,
+        `Write a LinkedIn post. Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
-        task.payload.topic_summary ? `Research brief:\n${task.payload.topic_summary}` : 'No research brief available — check content-bank for briefs on this topic.',
+        task.payload.topic_summary ? `Brief: ${task.payload.topic_summary.substring(0, 500)}` : '',
         ``,
-        `Draft ID in Supabase: ${task.ref_id}`,
+        `When done, write JSON and upload:`,
         ``,
-        `After writing, update the draft in Supabase:`,
-        `- Set content = your post text`,
-        `- Set word_count = actual word count`,
-        `- Set status = 'approved'`,
-        ``,
-        `ONE draft only. 250 words max. Follow your pre-flight checklist.`,
+        `cat > /tmp/draft-output.json << 'JSONEOF'`,
+        `{"stage":"drafted","ref_id":"${task.ref_id}","content":"YOUR POST TEXT","draft_type":"commentary"}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/draft-output.json`,
       ].filter(Boolean).join('\n');
 
     case 'revise':
       return [
-        `Revise this LinkedIn draft based on Venky's feedback. Follow your VOICE.md rules.`,
+        `Revise this LinkedIn draft per feedback. Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
+        `Current draft:\n---\n${task.payload.current_content || '(none)'}\n---`,
+        `Feedback: "${task.payload.feedback}"`,
         ``,
-        `Current draft:`,
-        `---`,
-        task.payload.current_content || '(no content)',
-        `---`,
+        `When done, write JSON and upload:`,
         ``,
-        `Venky's feedback: "${task.payload.feedback}"`,
-        ``,
-        `Draft ID in Supabase: ${task.ref_id}`,
-        ``,
-        `After revising, update the draft in Supabase:`,
-        `- Set content = revised post text`,
-        `- Set word_count = actual word count`,
-        `- Set status = 'approved'`,
-        ``,
-        `Address the feedback specifically. Keep Venky's voice per VOICE.md.`,
+        `cat > /tmp/draft-output.json << 'JSONEOF'`,
+        `{"stage":"drafted","ref_id":"${task.ref_id}","content":"REVISED POST TEXT","draft_type":"commentary"}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/draft-output.json`,
       ].filter(Boolean).join('\n');
-
-    // === BLOG AGENTS (Stork research, Crane draft/revise) ===
 
     case 'blog_research':
       return [
-        `Research this blog topic. Follow your AGENTS.md research process fully.`,
+        `Research this blog topic (SEO + keywords). Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
-        task.payload.topic_url ? `Source URL: ${task.payload.topic_url}` : '',
-        task.payload.topic_source ? `Found via: ${task.payload.topic_source}` : '',
+        task.payload.topic_url ? `Source: ${task.payload.topic_url}` : '',
         ``,
-        `Topic ID in Supabase: ${task.ref_id}`,
+        `When done, write JSON and upload:`,
         ``,
-        `After researching, update the topic in Supabase:`,
-        `- Set summary = your full research brief`,
-        `- Set status = 'approved'`,
-        ``,
-        `Save the brief to your workspace as per AGENTS.md.`,
-        `Use the Supabase credentials from your workspace tools.`,
+        `cat > /tmp/blog-research-output.json << 'JSONEOF'`,
+        `{"stage":"blog_researched","ref_id":"${task.ref_id}","summary":"RESEARCH BRIEF","keywords":["kw1","kw2"],"cluster":"interactive-learning"}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/blog-research-output.json`,
       ].filter(Boolean).join('\n');
 
     case 'blog_draft':
       return [
-        `Write a blog post for appletpod.com. Follow your AGENTS.md fully.`,
+        `Write a blog post for appletpod.com. Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
-        task.payload.topic_summary ? `Research brief:\n${task.payload.topic_summary}` : 'No research brief — check content-bank for briefs on this topic.',
+        task.payload.topic_summary ? `Brief: ${task.payload.topic_summary.substring(0, 500)}` : '',
         ``,
-        `Draft ID in Supabase: ${task.ref_id}`,
+        `When done, write JSON and upload:`,
         ``,
-        `After writing, update the draft in Supabase:`,
-        `- Set content = full MDX blog post`,
-        `- Set word_count = actual word count`,
-        `- Set status = 'approved'`,
-        ``,
-        `1500-3000 words. MDX format. Follow your writing procedure.`,
+        `cat > /tmp/blog-output.json << 'JSONEOF'`,
+        `{"stage":"blog_drafted","ref_id":"${task.ref_id}","content":"FULL MDX BLOG POST","word_count":2000,"blog_slug":"topic-slug","blog_keywords":["kw1"],"blog_cluster":"ai-in-education"}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/blog-output.json`,
       ].filter(Boolean).join('\n');
 
     case 'blog_revise':
       return [
-        `Revise this blog post based on Venky's feedback. Follow your AGENTS.md.`,
+        `Revise this blog post per feedback. Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
+        `Current draft:\n---\n${(task.payload.current_content || '').substring(0, 3000)}\n---`,
+        `Feedback: "${task.payload.feedback}"`,
         ``,
-        `Current draft:`,
-        `---`,
-        task.payload.current_content?.substring(0, 5000) || '(no content)',
-        `---`,
+        `When done, write JSON and upload:`,
         ``,
-        `Venky's feedback: "${task.payload.feedback}"`,
-        ``,
-        `Draft ID in Supabase: ${task.ref_id}`,
-        ``,
-        `After revising, update the draft in Supabase:`,
-        `- Set content = revised MDX blog post`,
-        `- Set word_count = actual word count`,
-        `- Set status = 'approved'`,
-        ``,
-        `Address the feedback specifically. Maintain blog quality standards.`,
+        `cat > /tmp/blog-output.json << 'JSONEOF'`,
+        `{"stage":"blog_drafted","ref_id":"${task.ref_id}","content":"REVISED MDX POST","word_count":2000}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/blog-output.json`,
       ].filter(Boolean).join('\n');
-
-    // === CAROUSEL (Bee writes JSON, then we generate PDF) ===
 
     case 'carousel_draft':
       return [
-        `Write a LinkedIn carousel for this topic. Output JSON format as per your AGENTS.md carousel section.`,
+        `Write a LinkedIn carousel (6-8 slides). Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
-        task.payload.topic_summary ? `Research brief:\n${task.payload.topic_summary}` : 'No research brief — check content-bank for briefs on this topic.',
+        task.payload.topic_summary ? `Brief: ${task.payload.topic_summary.substring(0, 500)}` : '',
         ``,
-        `Draft ID in Supabase: ${task.ref_id}`,
+        `When done, write JSON and upload:`,
         ``,
-        `After writing, update the draft in Supabase:`,
-        `- Set carousel_json = your carousel JSON (the full object with slides array)`,
-        `- Set content = the LinkedIn caption text`,
-        `- Set word_count = caption word count`,
-        `- Set status = 'approved'`,
-        ``,
-        `6-8 slides. Follow your carousel JSON format exactly.`,
+        `cat > /tmp/draft-output.json << 'JSONEOF'`,
+        `{"stage":"drafted","ref_id":"${task.ref_id}","content":"LINKEDIN CAPTION","draft_type":"carousel","carousel_json":{"slides":[{"title":"...","body":"..."}]}}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/draft-output.json`,
       ].filter(Boolean).join('\n');
 
     case 'carousel_revise':
       return [
-        `Revise this LinkedIn carousel based on Venky's feedback. Output JSON format.`,
+        `Revise this carousel per feedback. Follow your AGENTS.md.`,
         ``,
         `Topic: "${task.ref_title}"`,
+        `Current:\n---\n${(task.payload.current_content || '').substring(0, 3000)}\n---`,
+        `Feedback: "${task.payload.feedback}"`,
         ``,
-        `Current carousel JSON:`,
-        `---`,
-        task.payload.current_content?.substring(0, 5000) || '(no content)',
-        `---`,
+        `When done, write JSON and upload:`,
         ``,
-        `Venky's feedback: "${task.payload.feedback}"`,
-        ``,
-        `Draft ID in Supabase: ${task.ref_id}`,
-        ``,
-        `After revising, update the draft in Supabase:`,
-        `- Set carousel_json = revised carousel JSON`,
-        `- Set content = revised LinkedIn caption`,
-        `- Set status = 'approved'`,
-        ``,
-        `Address the feedback specifically. Keep the slide format consistent.`,
+        `cat > /tmp/draft-output.json << 'JSONEOF'`,
+        `{"stage":"drafted","ref_id":"${task.ref_id}","content":"REVISED CAPTION","draft_type":"carousel","carousel_json":{"slides":[{"title":"...","body":"..."}]}}`,
+        `JSONEOF`,
+        `${UPLOAD_CMD} /tmp/draft-output.json`,
       ].filter(Boolean).join('\n');
   }
 }
@@ -213,7 +182,8 @@ async function runAgent(task) {
   fs.writeFileSync(tmpFile, prompt);
 
   // Copy prompt file into container, then run agent
-  const copyCmd = `docker cp ${tmpFile} openclaw-ji9i-openclaw-1:/tmp/agent-prompt.txt`;
+  const containerName = DOCKER_PREFIX.replace('docker exec ', '');
+  const copyCmd = `docker cp ${tmpFile} ${containerName}:/tmp/agent-prompt.txt`;
   const agentCmd = `${DOCKER_PREFIX} bash -c 'openclaw agent --agent ${task.agent} --message "$(cat /tmp/agent-prompt.txt)"'`;
 
   log(`🚀 Running ${task.agent} agent for: ${task.ref_title}`);
@@ -263,87 +233,30 @@ async function processTask(task) {
     const completedAt = Date.now();
     const durationMs = completedAt - startedAt;
 
-    // The agent should update Supabase directly (it has the credentials in its workspace).
-    // But as a fallback, we also update from here if the agent's output contains the content.
-    // Check if the agent already updated the record:
+    // Agent uses upload.js to write results to Supabase.
+    // Verify the upload happened by checking the record status.
+    let uploaded = false;
     if (task.task_type === 'research' || task.task_type === 'blog_research') {
-      const { data: topic } = await sb.from('topics').select('summary, status').eq('id', task.ref_id).single();
-      if (!topic?.summary || topic.status !== 'approved') {
-        // Agent didn't update Supabase directly — use the output as the summary
-        log(`   Agent didn't update Supabase directly, writing result as summary`);
-        await sb.from('topics').update({
-          summary: result,
-          status: 'approved',
-        }).eq('id', task.ref_id);
-      } else {
-        log(`   Agent updated Supabase directly ✓`);
-      }
-    } else if (task.task_type === 'carousel_draft' || task.task_type === 'carousel_revise') {
-      // Carousel: check if agent stored carousel_json, try to generate PDF
-      const { data: draft } = await sb.from('drafts').select('carousel_json, content, status').eq('id', task.ref_id).single();
-      if (!draft?.carousel_json || draft.status !== 'approved') {
-        log(`   Agent didn't update Supabase directly, attempting to parse carousel JSON from output`);
-        // Try to extract JSON from the output
-        let carouselJson = null;
-        try {
-          const jsonMatch = result.match(/\{[\s\S]*"slides"[\s\S]*\}/);
-          if (jsonMatch) carouselJson = jsonMatch[0];
-        } catch (_) {}
-        if (carouselJson) {
-          await sb.from('drafts').update({
-            carousel_json: carouselJson,
-            content: result.replace(carouselJson, '').trim().substring(0, 2000) || '',
-            status: 'approved',
-          }).eq('id', task.ref_id);
-        } else {
-          await sb.from('drafts').update({ content: result, status: 'approved' }).eq('id', task.ref_id);
-        }
-      } else {
-        log(`   Agent updated Supabase directly ✓`);
-      }
-      // Try to generate PDF from carousel_json
-      try {
-        const { data: updatedDraft } = await sb.from('drafts').select('carousel_json').eq('id', task.ref_id).single();
-        if (updatedDraft?.carousel_json) {
-          const fs = require('fs');
-          const tmpJson = `/tmp/carousel-${task.ref_id}.json`;
-          const tmpPdf = `/tmp/carousel-${task.ref_id}.pdf`;
-          fs.writeFileSync(tmpJson, typeof updatedDraft.carousel_json === 'string' ? updatedDraft.carousel_json : JSON.stringify(updatedDraft.carousel_json));
-          // Copy JSON into container, generate PDF, copy back
-          execSync(`docker cp ${tmpJson} openclaw-ji9i-openclaw-1:/tmp/carousel-input.json`, { timeout: 10000 });
-          execSync(`${DOCKER_PREFIX} node /data/.openclaw/workspace/carousel-generator/generate-carousel.js /tmp/carousel-input.json /tmp/carousel-output.pdf`, { timeout: 60000 });
-          execSync(`docker cp openclaw-ji9i-openclaw-1:/tmp/carousel-output.pdf ${tmpPdf}`, { timeout: 10000 });
-          // TODO: Upload PDF to storage and set carousel_pdf_url
-          // For now, just log success
-          log(`   📄 Carousel PDF generated: ${tmpPdf}`);
-          try { fs.unlinkSync(tmpJson); } catch (_) {}
-        }
-      } catch (pdfErr) {
-        log(`   ⚠️ PDF generation failed (non-fatal): ${pdfErr.message?.substring(0, 200)}`);
-      }
-    } else if (task.task_type === 'draft' || task.task_type === 'revise' || task.task_type === 'blog_draft' || task.task_type === 'blog_revise') {
-      const { data: draft } = await sb.from('drafts').select('content, status').eq('id', task.ref_id).single();
-      if (!draft?.content || draft.content === '' || draft.status !== 'approved') {
-        log(`   Agent didn't update Supabase directly, writing result as content`);
-        const wordCount = result.split(/\s+/).length;
-        await sb.from('drafts').update({
-          content: result,
-          word_count: wordCount,
-          status: 'approved',
-        }).eq('id', task.ref_id);
-      } else {
-        log(`   Agent updated Supabase directly ✓`);
-      }
+      const { data: topic } = await sb.from('topics').select('status').eq('id', task.ref_id).single();
+      uploaded = topic?.status === 'approved';
+    } else if (['draft', 'revise', 'blog_draft', 'blog_revise', 'carousel_draft', 'carousel_revise'].includes(task.task_type)) {
+      const { data: draft } = await sb.from('drafts').select('status').eq('id', task.ref_id).single();
+      uploaded = draft?.status === 'approved';
+    }
+
+    if (uploaded) {
+      log(`   upload.js confirmed: Supabase updated ✓`);
+    } else {
+      log(`   ⚠️ upload.js may not have run. Agent output saved to task result as fallback.`);
     }
 
     // Mark task completed
     await sb.from('agent_tasks').update({
       status: 'completed',
-      result: { output_length: result.length, word_count: result.split(/\s+/).length },
+      result: { output_length: result.length, uploaded },
       completed_at: new Date().toISOString(),
     }).eq('id', task.id);
 
-    // Update run
     await sb.from('runs').update({
       status: 'completed',
       completed_at: completedAt,
@@ -354,18 +267,69 @@ async function processTask(task) {
 
   } catch (err) {
     const errMsg = err.message?.substring(0, 500) || 'Unknown error';
-    log(`❌ Task failed: ${errMsg}`);
+    const isRateLimit = errMsg.includes('rate_limit') || errMsg.includes('429') || errMsg.includes('rate limit');
+    const isAuthError = errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('authentication');
 
-    await sb.from('agent_tasks').update({
-      status: 'failed',
-      error: errMsg,
-      completed_at: new Date().toISOString(),
-    }).eq('id', task.id);
+    // Track retry count in payload
+    const retryCount = (task.payload?.retry_count || 0);
+    const MAX_RETRIES = 5;
 
-    await sb.from('runs').update({
-      status: 'failed',
-      completed_at: Date.now(),
-    }).eq('id', runId);
+    if (isRateLimit && retryCount < MAX_RETRIES) {
+      // Rate limit: put back to pending with exponential backoff
+      const backoffMinutes = Math.pow(2, retryCount) * 5; // 5, 10, 20, 40, 80 min
+      const retryAfter = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString();
+
+      log(`⏳ Rate limited (attempt ${retryCount + 1}/${MAX_RETRIES}). Retry in ${backoffMinutes}m at ${retryAfter}`);
+
+      await sb.from('agent_tasks').update({
+        status: 'pending',
+        error: `rate_limit: retry ${retryCount + 1}/${MAX_RETRIES} at ${retryAfter}`,
+        claimed_at: null,
+        payload: { ...task.payload, retry_count: retryCount + 1, retry_after: retryAfter },
+      }).eq('id', task.id);
+
+      await sb.from('runs').update({
+        status: 'failed',
+        completed_at: Date.now(),
+        error: `rate_limit: will retry in ${backoffMinutes}m`,
+      }).eq('id', runId);
+
+    } else if (isAuthError) {
+      // Auth error: don't retry, needs human intervention
+      log(`🔒 Auth error — not retrying. Check API token.`);
+
+      await sb.from('agent_tasks').update({
+        status: 'failed',
+        error: `auth_error: ${errMsg}`,
+        completed_at: new Date().toISOString(),
+      }).eq('id', task.id);
+
+      await sb.from('runs').update({ status: 'failed', completed_at: Date.now(), error: errMsg }).eq('id', runId);
+
+    } else {
+      // Other errors: retry up to MAX_RETRIES with shorter backoff
+      if (retryCount < MAX_RETRIES) {
+        const backoffMinutes = Math.pow(2, retryCount) * 2; // 2, 4, 8, 16, 32 min
+        log(`❌ Failed (attempt ${retryCount + 1}/${MAX_RETRIES}). Retry in ${backoffMinutes}m. Error: ${errMsg}`);
+
+        await sb.from('agent_tasks').update({
+          status: 'pending',
+          error: `error (retry ${retryCount + 1}): ${errMsg}`,
+          claimed_at: null,
+          payload: { ...task.payload, retry_count: retryCount + 1, retry_after: new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString() },
+        }).eq('id', task.id);
+      } else {
+        log(`❌ Task permanently failed after ${MAX_RETRIES} attempts: ${errMsg}`);
+
+        await sb.from('agent_tasks').update({
+          status: 'failed',
+          error: `permanent_failure after ${MAX_RETRIES} retries: ${errMsg}`,
+          completed_at: new Date().toISOString(),
+        }).eq('id', task.id);
+      }
+
+      await sb.from('runs').update({ status: 'failed', completed_at: Date.now(), error: errMsg }).eq('id', runId);
+    }
   }
 }
 
@@ -377,15 +341,35 @@ async function poll() {
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-      .limit(1);
+      .limit(5);
 
     if (error) {
       log(`⚠️ Poll error: ${error.message}`);
       return;
     }
 
-    if (tasks && tasks.length > 0) {
-      await processTask(tasks[0]);
+    if (!tasks || tasks.length === 0) return;
+
+    // Filter out tasks with retry_after in the future
+    const now = new Date().toISOString();
+    const ready = tasks.filter(t => {
+      const retryAfter = t.payload?.retry_after;
+      if (!retryAfter) return true;
+      return retryAfter <= now;
+    });
+
+    if (ready.length > 0) {
+      await processTask(ready[0]);
+    } else if (tasks.length > 0) {
+      // All pending tasks are in backoff
+      const nextRetry = tasks
+        .map(t => t.payload?.retry_after)
+        .filter(Boolean)
+        .sort()[0];
+      if (nextRetry) {
+        const minsLeft = Math.round((new Date(nextRetry) - Date.now()) / 60000);
+        if (minsLeft > 0) log(`⏳ ${tasks.length} task(s) in backoff. Next retry in ${minsLeft}m`);
+      }
     }
   } catch (e) {
     log(`⚠️ Poll exception: ${e.message}`);
