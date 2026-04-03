@@ -267,18 +267,69 @@ async function processTask(task) {
 
   } catch (err) {
     const errMsg = err.message?.substring(0, 500) || 'Unknown error';
-    log(`❌ Task failed: ${errMsg}`);
+    const isRateLimit = errMsg.includes('rate_limit') || errMsg.includes('429') || errMsg.includes('rate limit');
+    const isAuthError = errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('authentication');
 
-    await sb.from('agent_tasks').update({
-      status: 'failed',
-      error: errMsg,
-      completed_at: new Date().toISOString(),
-    }).eq('id', task.id);
+    // Track retry count in payload
+    const retryCount = (task.payload?.retry_count || 0);
+    const MAX_RETRIES = 5;
 
-    await sb.from('runs').update({
-      status: 'failed',
-      completed_at: Date.now(),
-    }).eq('id', runId);
+    if (isRateLimit && retryCount < MAX_RETRIES) {
+      // Rate limit: put back to pending with exponential backoff
+      const backoffMinutes = Math.pow(2, retryCount) * 5; // 5, 10, 20, 40, 80 min
+      const retryAfter = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString();
+
+      log(`⏳ Rate limited (attempt ${retryCount + 1}/${MAX_RETRIES}). Retry in ${backoffMinutes}m at ${retryAfter}`);
+
+      await sb.from('agent_tasks').update({
+        status: 'pending',
+        error: `rate_limit: retry ${retryCount + 1}/${MAX_RETRIES} at ${retryAfter}`,
+        claimed_at: null,
+        payload: { ...task.payload, retry_count: retryCount + 1, retry_after: retryAfter },
+      }).eq('id', task.id);
+
+      await sb.from('runs').update({
+        status: 'failed',
+        completed_at: Date.now(),
+        error: `rate_limit: will retry in ${backoffMinutes}m`,
+      }).eq('id', runId);
+
+    } else if (isAuthError) {
+      // Auth error: don't retry, needs human intervention
+      log(`🔒 Auth error — not retrying. Check API token.`);
+
+      await sb.from('agent_tasks').update({
+        status: 'failed',
+        error: `auth_error: ${errMsg}`,
+        completed_at: new Date().toISOString(),
+      }).eq('id', task.id);
+
+      await sb.from('runs').update({ status: 'failed', completed_at: Date.now(), error: errMsg }).eq('id', runId);
+
+    } else {
+      // Other errors: retry up to MAX_RETRIES with shorter backoff
+      if (retryCount < MAX_RETRIES) {
+        const backoffMinutes = Math.pow(2, retryCount) * 2; // 2, 4, 8, 16, 32 min
+        log(`❌ Failed (attempt ${retryCount + 1}/${MAX_RETRIES}). Retry in ${backoffMinutes}m. Error: ${errMsg}`);
+
+        await sb.from('agent_tasks').update({
+          status: 'pending',
+          error: `error (retry ${retryCount + 1}): ${errMsg}`,
+          claimed_at: null,
+          payload: { ...task.payload, retry_count: retryCount + 1, retry_after: new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString() },
+        }).eq('id', task.id);
+      } else {
+        log(`❌ Task permanently failed after ${MAX_RETRIES} attempts: ${errMsg}`);
+
+        await sb.from('agent_tasks').update({
+          status: 'failed',
+          error: `permanent_failure after ${MAX_RETRIES} retries: ${errMsg}`,
+          completed_at: new Date().toISOString(),
+        }).eq('id', task.id);
+      }
+
+      await sb.from('runs').update({ status: 'failed', completed_at: Date.now(), error: errMsg }).eq('id', runId);
+    }
   }
 }
 
@@ -290,15 +341,35 @@ async function poll() {
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: true })
-      .limit(1);
+      .limit(5);
 
     if (error) {
       log(`⚠️ Poll error: ${error.message}`);
       return;
     }
 
-    if (tasks && tasks.length > 0) {
-      await processTask(tasks[0]);
+    if (!tasks || tasks.length === 0) return;
+
+    // Filter out tasks with retry_after in the future
+    const now = new Date().toISOString();
+    const ready = tasks.filter(t => {
+      const retryAfter = t.payload?.retry_after;
+      if (!retryAfter) return true;
+      return retryAfter <= now;
+    });
+
+    if (ready.length > 0) {
+      await processTask(ready[0]);
+    } else if (tasks.length > 0) {
+      // All pending tasks are in backoff
+      const nextRetry = tasks
+        .map(t => t.payload?.retry_after)
+        .filter(Boolean)
+        .sort()[0];
+      if (nextRetry) {
+        const minsLeft = Math.round((new Date(nextRetry) - Date.now()) / 60000);
+        if (minsLeft > 0) log(`⏳ ${tasks.length} task(s) in backoff. Next retry in ${minsLeft}m`);
+      }
     }
   } catch (e) {
     log(`⚠️ Poll exception: ${e.message}`);
