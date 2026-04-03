@@ -96,6 +96,21 @@ export function useDashboardData() {
     }
   };
 
+  const retryTask = async (taskId: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/retry-task`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ taskId }),
+      });
+      const result = await response.json();
+      if (result.message) showToast(result.message);
+      load();
+    } catch (error) {
+      showToast('Failed to retry task');
+    }
+  };
+
   const archiveTopic = async (id: string) => {
     try {
       await fetch(`${API_BASE}/archive-topic`, {
@@ -270,6 +285,7 @@ export function useDashboardData() {
     requireAuth,
     logout,
     approveTopic,
+    retryTask,
     archiveTopic,
     restoreTopic,
     rejectTopic,

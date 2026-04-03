@@ -26,13 +26,14 @@ export function Column({ title, count, children, accent = 'var(--royal)' }: {
 }
 
 // === TOPIC CARD ===
-export function TopicCard({ t, showActions = true, agentTasks = [], onView, onApprove, onReject, onArchive, onRestore, requireAuth }: {
+export function TopicCard({ t, showActions = true, agentTasks = [], onView, onApprove, onReject, onArchive, onRestore, onRetry, requireAuth }: {
   t: Topic; showActions?: boolean; agentTasks?: AgentTask[];
   onView: (t: Topic) => void;
   onApprove: (id: string) => void;
   onReject: (t: Topic) => void;
   onArchive: (id: string) => void;
   onRestore?: (id: string) => void;
+  onRetry?: (taskId: string) => void;
   requireAuth: (fn: () => void) => void;
 }) {
   const isBlogTopic = t.channel === 'blog' || t.channel === 'both';
@@ -82,6 +83,9 @@ export function TopicCard({ t, showActions = true, agentTasks = [], onView, onAp
                 <>
                   {showStatus && <p className="text-2xs font-semibold mb-1" style={{ color: taskStatus!.statusColor }}>{taskStatus!.statusLabel}</p>}
                   {showStatus && taskStatus!.retryInfo && <p className="text-2xs text-[var(--text-muted)] mb-1">{taskStatus!.retryInfo}</p>}
+                  {showStatus && taskStatus!.taskState === 'failed' && taskStatus!.taskId && onRetry && (
+                    <button onClick={() => requireAuth(() => onRetry(taskStatus!.taskId!))} className="text-xs py-2 px-4 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all mt-1">Retry</button>
+                  )}
                   {!showStatus && actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
                   {!showStatus && (
                     <div className="flex gap-1.5">
@@ -106,7 +110,7 @@ export function TopicCard({ t, showActions = true, agentTasks = [], onView, onAp
 }
 
 // === DRAFT CARD ===
-export function DraftCard({ d, revisionCount = 0, showActions = true, agentTasks = [], onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, onRestore, requireAuth }: {
+export function DraftCard({ d, revisionCount = 0, showActions = true, agentTasks = [], onView, onApprove, onReject, onArchive, onRevise, onPublish, onCopy, onRestore, onRetry, requireAuth }: {
   d: Draft; revisionCount?: number; showActions?: boolean; agentTasks?: AgentTask[];
   onView: (d: Draft) => void;
   onApprove: (id: string) => void;
@@ -116,6 +120,7 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, agentTasks
   onPublish: (id: string) => void;
   onCopy: (text: string) => void;
   onRestore?: (id: string) => void;
+  onRetry?: (taskId: string) => void;
   requireAuth: (fn: () => void) => void;
 }) {
   const stLabel = d.stage === 'published' ? 'Published' : d.stage === 'ready_to_post' ? 'Ready' : d.status === 'revision' ? 'Revision' : 'Draft';
@@ -167,6 +172,9 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, agentTasks
                 <>
                   {showStatus && <p className="text-2xs font-semibold mb-1" style={{ color: taskStatus!.statusColor }}>{taskStatus!.statusLabel}</p>}
                   {showStatus && taskStatus!.retryInfo && <p className="text-2xs text-[var(--text-muted)] mb-1">{taskStatus!.retryInfo}</p>}
+                  {showStatus && taskStatus!.taskState === 'failed' && taskStatus!.taskId && onRetry && (
+                    <button onClick={() => requireAuth(() => onRetry(taskStatus!.taskId!))} className="text-xs py-2 px-4 rounded-lg bg-[var(--royal)] text-white font-semibold hover:opacity-90 active:scale-[0.97] transition-all mt-1">Retry</button>
+                  )}
                   {!showStatus && actions.statusLabel && <p className="text-2xs font-medium text-[var(--text-muted)]">{actions.statusLabel}</p>}
                   {!showStatus && (
                     <div className="flex gap-1.5">

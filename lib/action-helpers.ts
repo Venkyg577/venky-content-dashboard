@@ -25,6 +25,7 @@ export const DraftActionStatus = {
 export type TaskStatus = {
   hasActiveTask: boolean;
   taskState: 'pending' | 'claimed' | 'running' | 'completed' | 'failed' | 'retrying' | null;
+  taskId: string | null;
   agent: string | null;
   statusLabel: string;
   statusColor: string;
@@ -35,14 +36,14 @@ export type TaskStatus = {
  * Find the active agent task for a given item (topic or draft)
  */
 export function getTaskStatus(refId: string, agentTasks: AgentTask[], currentStage?: string): TaskStatus {
-  const noTask: TaskStatus = { hasActiveTask: false, taskState: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
+  const noTask: TaskStatus = { hasActiveTask: false, taskState: null, taskId: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
 
   // Scouted items never have active tasks — they're waiting for human approval
   if (currentStage === 'scouted') return noTask;
 
-  // Find the most recent non-completed task for this item
+  // Find the most recent non-completed task for this item (include failed — needs retry)
   const task = agentTasks
-    .filter(t => t.ref_id === refId && t.status !== 'completed' && t.status !== 'failed')
+    .filter(t => t.ref_id === refId && t.status !== 'completed')
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
   if (!task) return noTask;
@@ -67,30 +68,30 @@ export function getTaskStatus(refId: string, agentTasks: AgentTask[], currentSta
   switch (task.status) {
     case 'pending':
       if (isRetrying) {
-        return { hasActiveTask: true, taskState: 'retrying', agent: task.agent, statusLabel: `⏳ ${agentName} — rate limited`, statusColor: 'var(--gold)', retryInfo };
+        return { hasActiveTask: true, taskState: 'retrying', taskId: task.id, agent: task.agent, statusLabel: `⏳ ${agentName} — rate limited`, statusColor: 'var(--gold)', retryInfo };
       }
-      return { hasActiveTask: true, taskState: 'pending', agent: task.agent, statusLabel: `⏳ Queued for ${agentName}`, statusColor: 'var(--text-secondary)', retryInfo: null };
+      return { hasActiveTask: true, taskState: 'pending', taskId: task.id, agent: task.agent, statusLabel: `⏳ Queued for ${agentName}`, statusColor: 'var(--text-secondary)', retryInfo: null };
 
     case 'claimed':
-      return { hasActiveTask: true, taskState: 'claimed', agent: task.agent, statusLabel: `🔄 ${agentName} starting...`, statusColor: 'var(--blue)', retryInfo: null };
+      return { hasActiveTask: true, taskState: 'claimed', taskId: task.id, agent: task.agent, statusLabel: `🔄 ${agentName} starting...`, statusColor: 'var(--blue)', retryInfo: null };
 
     case 'running':
-      return { hasActiveTask: true, taskState: 'running', agent: task.agent, statusLabel: `🤖 ${agentName} working...`, statusColor: 'var(--blue)', retryInfo: null };
+      return { hasActiveTask: true, taskState: 'running', taskId: task.id, agent: task.agent, statusLabel: `🤖 ${agentName} working...`, statusColor: 'var(--blue)', retryInfo: null };
 
     case 'failed':
       const isRateLimit = task.error?.includes('rate_limit') || task.error?.includes('429');
       return {
-        hasActiveTask: true, taskState: 'failed', agent: task.agent,
-        statusLabel: isRateLimit ? `⚠️ Rate limited — will retry` : `❌ ${agentName} failed`,
+        hasActiveTask: true, taskState: 'failed', taskId: task.id, agent: task.agent,
+        statusLabel: isRateLimit ? `⚠️ Rate limited` : `❌ ${agentName} failed`,
         statusColor: isRateLimit ? 'var(--gold)' : 'var(--red)',
         retryInfo: task.error?.substring(0, 80) || null,
       };
 
     case 'completed':
-      return { hasActiveTask: false, taskState: 'completed', agent: task.agent, statusLabel: '', statusColor: '', retryInfo: null };
+      return { hasActiveTask: false, taskState: 'completed', taskId: task.id, agent: task.agent, statusLabel: '', statusColor: '', retryInfo: null };
 
     default:
-      return { hasActiveTask: false, taskState: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
+      return { hasActiveTask: false, taskState: null, taskId: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
   }
 }
 

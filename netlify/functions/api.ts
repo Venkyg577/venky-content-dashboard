@@ -203,6 +203,36 @@ export const handler: Handler = async (event) => {
       };
     }
 
+    // POST /retry-task — reset a failed task to pending so agent-runner picks it up
+    if (path === '/retry-task' && method === 'POST') {
+      const { taskId } = JSON.parse(event.body || '{}');
+      if (!taskId) throw new Error('taskId required');
+
+      const { data: task } = await supabase
+        .from('agent_tasks')
+        .select('*')
+        .eq('id', taskId)
+        .single();
+
+      if (!task) throw new Error('Task not found');
+      if (task.status !== 'failed') throw new Error('Only failed tasks can be retried');
+
+      // Reset to pending with cleared error
+      await supabase.from('agent_tasks').update({
+        status: 'pending',
+        error: null,
+        claimed_at: null,
+        completed_at: null,
+        payload: { ...task.payload, retry_count: 0, retry_after: null },
+      }).eq('id', taskId);
+
+      return {
+        statusCode: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ success: true, message: `Retrying ${task.agent} for: ${task.ref_title}` }),
+      };
+    }
+
     // POST /approve-draft
     if (path === '/approve-draft' && method === 'POST') {
       const { draftId } = JSON.parse(event.body || '{}');

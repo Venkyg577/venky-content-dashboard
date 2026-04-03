@@ -129,6 +129,7 @@ export function Dashboard() {
     onReject: (t: Topic) => setModal({ type: 'topic' as const, item: t, mode: 'reject' as const }),
     onArchive: data.archiveTopic,
     onRestore: opts?.showRestore ? data.restoreTopic : undefined,
+    onRetry: data.retryTask,
     requireAuth: data.requireAuth,
   });
 
@@ -144,6 +145,7 @@ export function Dashboard() {
     onPublish: data.publishDraft,
     onCopy: handleCopy,
     onRestore: opts?.showRestore ? data.restoreDraft : undefined,
+    onRetry: data.retryTask,
     requireAuth: data.requireAuth,
   });
 
@@ -816,9 +818,12 @@ export function Dashboard() {
                 const ts = getTaskStatus(item.id, data.agentTasks || [], item.stage);
                 const actions = getTopicActions(item.stage, item.status, ts);
                 if (ts.hasActiveTask) return (
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold" style={{ color: ts.statusColor }}>{ts.statusLabel}</p>
-                    {ts.retryInfo && <p className="text-xs text-[var(--text-muted)]">{ts.retryInfo}</p>}
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: ts.statusColor }}>{ts.statusLabel}</p>
+                      {ts.retryInfo && <p className="text-xs text-[var(--text-muted)]">{ts.retryInfo}</p>}
+                    </div>
+                    {ts.taskState === 'failed' && ts.taskId && <button onClick={() => data.requireAuth(() => { data.retryTask(ts.taskId!); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Retry</button>}
                   </div>
                 );
                 return (
@@ -833,9 +838,12 @@ export function Dashboard() {
                 const ts = getTaskStatus(item.id, data.agentTasks || [], item.stage);
                 const actions = getDraftActions(item.stage, item.status, ts);
                 if (ts.hasActiveTask) return (
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-semibold" style={{ color: ts.statusColor }}>{ts.statusLabel}</p>
-                    {ts.retryInfo && <p className="text-xs text-[var(--text-muted)]">{ts.retryInfo}</p>}
+                  <div className="flex items-center gap-3">
+                    <div>
+                      <p className="text-sm font-semibold" style={{ color: ts.statusColor }}>{ts.statusLabel}</p>
+                      {ts.retryInfo && <p className="text-xs text-[var(--text-muted)]">{ts.retryInfo}</p>}
+                    </div>
+                    {ts.taskState === 'failed' && ts.taskId && <button onClick={() => data.requireAuth(() => { data.retryTask(ts.taskId!); setModal(null); })} className="px-5 py-2.5 bg-[var(--royal)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Retry</button>}
                   </div>
                 );
                 return (
