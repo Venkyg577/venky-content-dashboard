@@ -115,55 +115,53 @@ export const handler: Handler = async (event) => {
       const isBlog = topic.channel === 'blog' || topic.channel === 'both';
       const isLinkedIn = topic.channel === 'linkedin' || topic.channel === 'both';
 
-      // Handle carousel scouted → researching
-      if (isCarousel && topic.stage === 'scouted') {
-        await supabase.from('topics').update({ status: 'pending', stage: 'researching' }).eq('id', topicId);
+      // Helper: send Slack notification
+      const notifySlack = async (agent: string, taskType: string, refId: string, title: string) => {
+        if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL_AIMY) {
+          await fetch('https://slack.com/api/chat.postMessage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}` },
+            body: JSON.stringify({
+              channel: process.env.SLACK_CHANNEL_AIMY,
+              text: `:rocket: SPAWN_AGENT: ${agent}\nTask: ${taskType}\nRef ID: ${refId}\nTitle: ${title}`
+            })
+          });
+        }
+      };
+
+      // === SCOUTED → RESEARCHED (card moves to Research column) ===
+      if (topic.stage === 'scouted') {
+        const agent = (isBlog || isCarousel) ? (isCarousel ? 'owl' : 'stork') : 'owl';
+        const taskType = isBlog ? 'blog_research' : 'research';
+
+        // Move topic to Research column immediately (agent_tasks shows "working" status)
+        await supabase.from('topics').update({ stage: 'researched', status: 'pending' }).eq('id', topicId);
+
+        // Create agent task
         await supabase.from('agent_tasks').insert({
-          task_type: 'research',
-          agent: 'owl',
+          task_type: taskType,
+          agent,
           ref_id: topicId,
           ref_title: topic.title,
           payload: { topic_title: topic.title, topic_url: topic.url, topic_source: topic.source },
-          status: 'pending'
+          status: 'pending',
         });
-        
-        // Send Slack notification
-        await fetch('https://slack.com/api/chat.postMessage', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}`
-          },
-          body: JSON.stringify({
-            channel: process.env.SLACK_CHANNEL_AIMY,
-            text: `🚀 SPAWN_AGENT: owl\nTask: research\nRef ID: ${topicId}\nTitle: ${topic.title} (carousel)`
-          })
-        });
+
+        await notifySlack(agent, taskType, topicId, topic.title);
 
         return {
           statusCode: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ success: true, message: 'Owl spawning for carousel research' }),
+          body: JSON.stringify({ success: true, message: `${agent} researching: ${topic.title}` }),
         };
       }
 
-      // Determine next agent based on current stage and channel
-      let nextAgent = '';
-      let nextTaskType = '';
-      let nextStage = '';
+      // === RESEARCHED → DRAFTED (card moves to Drafted column) ===
+      if (topic.stage === 'researched') {
+        const agent = isBlog ? 'crane' : 'bee';
+        const taskType = isBlog ? 'blog_draft' : 'draft';
 
-      if (topic.stage === 'scouted') {
-        // Scouted → Research
-        nextAgent = isBlog ? 'stork' : 'owl';
-        nextTaskType = isBlog ? 'blog_research' : 'research';
-        nextStage = 'researching';
-      } else if (topic.stage === 'researched') {
-        // Researched → Draft (create a draft row, then assign agent)
-        nextAgent = isBlog ? 'crane' : 'bee';
-        nextTaskType = isBlog ? 'blog_draft' : 'draft';
-        nextStage = 'drafting';
-
-        // Create draft row first
+        // Create draft row in Drafted column
         const draftId = crypto.randomUUID();
         await supabase.from('drafts').insert({
           id: draftId,
@@ -171,77 +169,37 @@ export const handler: Handler = async (event) => {
           draft_type: isBlog ? 'blog' : 'commentary',
           channel: topic.channel,
           status: 'pending',
-          stage: 'drafting',
+          stage: 'drafted',
           blog_slug: isBlog ? topic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60) : null,
           created_at: Date.now(),
         });
 
         // Create agent task pointing to the draft
         await supabase.from('agent_tasks').insert({
-          task_type: nextTaskType,
-          agent: nextAgent,
+          task_type: taskType,
+          agent,
           ref_id: draftId,
           ref_title: topic.title,
           payload: { topic_id: topicId, topic_title: topic.title, topic_summary: topic.summary },
           status: 'pending',
         });
 
-        // Update topic stage
-        await supabase.from('topics').update({ stage: nextStage, status: 'approved' }).eq('id', topicId);
+        // Mark topic as approved (done in pipeline)
+        await supabase.from('topics').update({ status: 'approved' }).eq('id', topicId);
 
-        // Slack notification
-        if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL_AIMY) {
-          await fetch('https://slack.com/api/chat.postMessage', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}` },
-            body: JSON.stringify({
-              channel: process.env.SLACK_CHANNEL_AIMY,
-              text: `:rocket: SPAWN_AGENT: ${nextAgent}\nTask: ${nextTaskType}\nRef ID: ${draftId}\nTitle: ${topic.title}`
-            })
-          });
-        }
+        await notifySlack(agent, taskType, draftId, topic.title);
 
         return {
           statusCode: 200,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ success: true, message: `${nextAgent} spawning for ${nextTaskType}` }),
-        };
-      }
-
-      if (nextAgent && topic.stage === 'scouted') {
-        // Scouted → Research path
-        await supabase.from('topics').update({ stage: nextStage, status: 'approved' }).eq('id', topicId);
-        await supabase.from('agent_tasks').insert({
-          task_type: nextTaskType,
-          agent: nextAgent,
-          ref_id: topicId,
-          ref_title: topic.title,
-          payload: { topic_title: topic.title, topic_url: topic.url, topic_source: topic.source },
-          status: 'pending',
-        });
-
-        if (process.env.SLACK_BOT_TOKEN && process.env.SLACK_CHANNEL_AIMY) {
-          await fetch('https://slack.com/api/chat.postMessage', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.SLACK_BOT_TOKEN}` },
-            body: JSON.stringify({
-              channel: process.env.SLACK_CHANNEL_AIMY,
-              text: `:rocket: SPAWN_AGENT: ${nextAgent}\nTask: ${nextTaskType}\nRef ID: ${topicId}\nTitle: ${topic.title}`
-            })
-          });
-        }
-
-        return {
-          statusCode: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ success: true, message: `${nextAgent} spawning for ${nextTaskType}` }),
+          body: JSON.stringify({ success: true, message: `${agent} drafting: ${topic.title}` }),
         };
       }
 
       return {
         statusCode: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ success: true, message: 'No action needed for this stage' }),
+        body: JSON.stringify({ success: true, message: 'No action for this stage' }),
       };
     }
 
