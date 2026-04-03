@@ -75,7 +75,7 @@ export function TopicCard({ t, showActions = true, agentTasks = [], onView, onAp
         {showActions && t.status !== 'archived' && (
           <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
             {(() => {
-              const taskStatus = agentTasks.length > 0 ? getTaskStatus(t.id, agentTasks) : null;
+              const taskStatus = agentTasks.length > 0 ? getTaskStatus(t.id, agentTasks, t.stage) : null;
               const actions = getTopicActions(t.stage, t.status, taskStatus || undefined);
               const showStatus = taskStatus?.hasActiveTask && taskStatus.statusLabel;
               return (
@@ -160,7 +160,7 @@ export function DraftCard({ d, revisionCount = 0, showActions = true, agentTasks
         {showActions && d.stage === 'drafted' && d.status !== 'archived' && (
           <div className="flex flex-col gap-1.5 mt-3 pt-3 border-t border-[var(--border)]" onClick={e => e.stopPropagation()}>
             {(() => {
-              const taskStatus = agentTasks.length > 0 ? getTaskStatus(d.id, agentTasks) : null;
+              const taskStatus = agentTasks.length > 0 ? getTaskStatus(d.id, agentTasks, d.stage) : null;
               const actions = getDraftActions(d.stage, d.status, taskStatus || undefined);
               const showStatus = taskStatus?.hasActiveTask && taskStatus.statusLabel;
               return (

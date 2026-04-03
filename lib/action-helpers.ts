@@ -34,13 +34,18 @@ export type TaskStatus = {
 /**
  * Find the active agent task for a given item (topic or draft)
  */
-export function getTaskStatus(refId: string, agentTasks: AgentTask[]): TaskStatus {
-  // Find the most recent task for this item
+export function getTaskStatus(refId: string, agentTasks: AgentTask[], currentStage?: string): TaskStatus {
+  const noTask: TaskStatus = { hasActiveTask: false, taskState: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
+
+  // Scouted items never have active tasks — they're waiting for human approval
+  if (currentStage === 'scouted') return noTask;
+
+  // Find the most recent non-completed task for this item
   const task = agentTasks
-    .filter(t => t.ref_id === refId)
+    .filter(t => t.ref_id === refId && t.status !== 'completed' && t.status !== 'failed')
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
 
-  if (!task) return { hasActiveTask: false, taskState: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
+  if (!task) return noTask;
 
   const agentEmoji: Record<string, string> = {
     eagle: '🦅 Eagle', owl: '🦉 Owl', bee: '🐝 Bee',

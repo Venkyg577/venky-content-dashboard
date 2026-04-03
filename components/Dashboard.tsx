@@ -5,7 +5,7 @@ import { Topic, Draft, Feedback, isBlogItem, isBlogTopic, isCarouselItem } from 
 import { useDashboardData } from '@/hooks/useDashboardData';
 import { Column, TopicCard, DraftCard, Toast, EmptyState, ArchivedItemRow, ArchivedEntry } from '@/components/ui';
 import { ago, fitColor, copyToClipboard, renderMd, stripFrontmatter, parseResearchBrief, hasThinkingContent, extractDraftContent, dedup } from '@/lib/format';
-import { getTopicActions, getDraftActions } from '@/lib/action-helpers';
+import { getTopicActions, getDraftActions, getTaskStatus } from '@/lib/action-helpers';
 
 type Tab = 'overview' | 'linkedin' | 'carousels' | 'blogs' | 'calendar';
 
@@ -813,7 +813,14 @@ export function Dashboard() {
           {mode === 'view' && (
             <div className="flex flex-wrap gap-2 px-5 py-4 border-t border-[var(--border)] bg-[var(--surface)] rounded-b-2xl flex-shrink-0">
               {type === 'topic' && item.status !== 'archived' && (() => {
-                const actions = getTopicActions(item.stage, item.status);
+                const ts = getTaskStatus(item.id, data.agentTasks || [], item.stage);
+                const actions = getTopicActions(item.stage, item.status, ts);
+                if (ts.hasActiveTask) return (
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold" style={{ color: ts.statusColor }}>{ts.statusLabel}</p>
+                    {ts.retryInfo && <p className="text-xs text-[var(--text-muted)]">{ts.retryInfo}</p>}
+                  </div>
+                );
                 return (
                   <div className="flex gap-2">
                     {actions.showApprove && <button onClick={() => data.requireAuth(() => { data.approveTopic(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--sage)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Approve</button>}
@@ -823,7 +830,14 @@ export function Dashboard() {
                 );
               })()}
               {type === 'draft' && item.stage === 'drafted' && item.status !== 'archived' && (() => {
-                const actions = getDraftActions(item.stage, item.status);
+                const ts = getTaskStatus(item.id, data.agentTasks || [], item.stage);
+                const actions = getDraftActions(item.stage, item.status, ts);
+                if (ts.hasActiveTask) return (
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-semibold" style={{ color: ts.statusColor }}>{ts.statusLabel}</p>
+                    {ts.retryInfo && <p className="text-xs text-[var(--text-muted)]">{ts.retryInfo}</p>}
+                  </div>
+                );
                 return (
                   <div className="flex gap-2">
                     {actions.showApprove && <button onClick={() => data.requireAuth(() => { data.approveDraft(item.id); setModal(null); })} className="px-5 py-2.5 bg-[var(--sage)] text-white rounded-xl text-sm font-semibold hover:opacity-90 transition-colors">Approve</button>}
