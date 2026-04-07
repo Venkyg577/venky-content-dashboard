@@ -8,7 +8,8 @@ import { AgentTask } from './supabase';
 export const TopicActionStatus = {
   PENDING: 'pending',
   APPROVED: 'approved',
-  REVISION: 'revision',
+  REVISION: 'revise_needed',
+  REVISING: 'revising',
   REJECTED: 'rejected',
   ARCHIVED: 'archived',
 } as const;
@@ -16,7 +17,8 @@ export const TopicActionStatus = {
 export const DraftActionStatus = {
   PENDING: 'pending',
   APPROVED: 'approved',
-  REVISION: 'revision',
+  REVISION: 'revise_needed',
+  REVISING: 'revising',
   REJECTED: 'rejected',
   ARCHIVED: 'archived',
 } as const;
@@ -118,12 +120,12 @@ export const getTopicActions = (stage: string, status: string, taskStatus?: Task
     || (isResearched && status === TopicActionStatus.PENDING);
 
   return {
-    showApprove: isReady,
-    showReject: isReady,
+    showApprove: isReady && !isRevising,
+    showReject: isReady && !isRevising,
     showRevise: false,
     showArchive: status !== 'archived',
-    statusLabel: isRevising ? '📝 Revising' : isReady ? '✅ Ready to Review' : '',
-    isActionable: isReady,
+    statusLabel: isRevising ? '⏳ Awaiting Revision' : isReady ? '✅ Ready to Review' : '',
+    isActionable: isReady && !isRevising,
     taskStatus: taskStatus || null,
   };
 };
@@ -146,12 +148,12 @@ export const getDraftActions = (stage: string, status: string, taskStatus?: Task
   const isRevising = status === DraftActionStatus.REVISION;
 
   return {
-    showApprove: isReady,
-    showReject: isReady,
-    showRevise: isReady && (stage === 'drafted' || stage === 'ready_to_post'),
+    showApprove: isReady && !isRevising,
+    showReject: isReady && !isRevising,
+    showRevise: isReady && !isRevising && (stage === 'drafted' || stage === 'ready_to_post'),
     showArchive: status !== 'archived',
-    statusLabel: isRevising ? '📝 Revising' : status === DraftActionStatus.APPROVED ? '✅ Ready to Review' : '',
-    isActionable: isReady,
+    statusLabel: isRevising ? '⏳ Awaiting Revision' : status === DraftActionStatus.APPROVED ? '✅ Ready to Review' : '',
+    isActionable: isReady && !isRevising,
     taskStatus: taskStatus || null,
   };
 };
