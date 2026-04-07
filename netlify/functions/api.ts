@@ -137,6 +137,12 @@ export const handler: Handler = async (event) => {
         // Move topic to Research column immediately (agent_tasks shows "working" status)
         await supabase.from('topics').update({ stage: 'researched', status: 'pending' }).eq('id', topicId);
 
+        // Dedup: cancel any existing pending/running tasks for this topic
+        await supabase.from('agent_tasks')
+          .update({ status: 'cancelled' })
+          .eq('ref_id', topicId)
+          .in('status', ['pending', 'running', 'claimed']);
+
         // Create agent task
         await supabase.from('agent_tasks').insert({
           task_type: taskType,
@@ -161,18 +167,45 @@ export const handler: Handler = async (event) => {
         const agent = isBlog ? 'crane' : 'bee';
         const taskType = isBlog ? 'blog_draft' : 'draft';
 
-        // Create draft row in Drafted column
-        const draftId = crypto.randomUUID();
-        await supabase.from('drafts').insert({
-          id: draftId,
-          topic: topic.title,
-          draft_type: isBlog ? 'blog' : 'commentary',
-          channel: topic.channel,
-          status: 'pending',
-          stage: 'drafted',
-          blog_slug: isBlog ? topic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60) : null,
-          created_at: Date.now(),
-        });
+        // Dedup: check if a non-published draft already exists for this topic
+        const { data: existingDrafts } = await supabase
+          .from('drafts')
+          .select('id, status, stage')
+          .eq('topic', topic.title)
+          .not('stage', 'eq', 'published')
+          .not('status', 'eq', 'archived')
+          .not('status', 'eq', 'rejected')
+          .limit(1);
+
+        let draftId: string;
+
+        if (existingDrafts && existingDrafts.length > 0) {
+          // Reuse existing draft — reset it to pending so agent-runner picks it up
+          draftId = existingDrafts[0].id;
+          await supabase.from('drafts').update({
+            status: 'pending',
+            stage: 'drafted',
+          }).eq('id', draftId);
+        } else {
+          // Create new draft row
+          draftId = crypto.randomUUID();
+          await supabase.from('drafts').insert({
+            id: draftId,
+            topic: topic.title,
+            draft_type: isBlog ? 'blog' : 'commentary',
+            channel: topic.channel,
+            status: 'pending',
+            stage: 'drafted',
+            blog_slug: isBlog ? topic.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 60) : null,
+            created_at: Date.now(),
+          });
+        }
+
+        // Dedup: cancel any existing pending/running tasks for this draft
+        await supabase.from('agent_tasks')
+          .update({ status: 'cancelled' })
+          .eq('ref_id', draftId)
+          .in('status', ['pending', 'running', 'claimed']);
 
         // Create agent task pointing to the draft
         await supabase.from('agent_tasks').insert({
@@ -184,8 +217,8 @@ export const handler: Handler = async (event) => {
           status: 'pending',
         });
 
-        // Mark topic as approved (done in pipeline)
-        await supabase.from('topics').update({ status: 'approved' }).eq('id', topicId);
+        // Mark topic as approved and move to drafted stage (removes from Research column)
+        await supabase.from('topics').update({ status: 'approved', stage: 'drafted' }).eq('id', topicId);
 
         await notifySlack(agent, taskType, draftId, topic.title);
 
