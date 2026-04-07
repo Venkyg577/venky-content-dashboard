@@ -102,14 +102,39 @@ export const handler: Handler = async (event) => {
     // POST /approve-topic
     if (path === '/approve-topic' && method === 'POST') {
       const { topicId } = JSON.parse(event.body || '{}');
-      
-      const { data: topic } = await supabase
+
+      let { data: topic } = await supabase
         .from('topics')
         .select('*')
         .eq('id', topicId)
         .single();
-      
+
       if (!topic) throw new Error('Topic not found');
+
+      // Dedup check: if another topic with same canonical_id exists in active stage, consolidate
+      const { data: duplicates } = await supabase
+        .from('topics')
+        .select('*')
+        .eq('canonical_id', topic.canonical_id)
+        .not('status', 'eq', 'archived')
+        .not('status', 'eq', 'rejected')
+        .not('id', 'eq', topicId);
+
+      if (duplicates && duplicates.length > 0) {
+        // Found duplicates — archive them and use this topic instead
+        const stageOrder = { published: 5, ready_to_post: 4, drafted: 3, researched: 2, scouted: 1 };
+        const sorted = [topic, ...duplicates].sort((a, b) => (stageOrder[b.stage] || 0) - (stageOrder[a.stage] || 0));
+
+        // If another topic is further along, use that one instead
+        if (sorted[0].id !== topic.id) {
+          topic = sorted[0];
+        }
+
+        // Archive the others
+        for (const dupe of duplicates) {
+          await supabase.from('topics').update({ status: 'archived' }).eq('id', dupe.id);
+        }
+      }
 
       const isCarousel = topic.channel === 'carousel';
       const isBlog = topic.channel === 'blog' || topic.channel === 'both';
