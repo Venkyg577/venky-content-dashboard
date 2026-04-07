@@ -111,6 +111,15 @@ export const handler: Handler = async (event) => {
 
       if (!topic) throw new Error('Topic not found');
 
+      // Block: Cannot approve rejected topics (agent already said no)
+      if (topic.status === 'rejected') {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Cannot approve rejected topic. Agent research concluded this should not be written.' }),
+        };
+      }
+
       // Dedup check: consolidate ALL duplicates (including archived) by canonical_id
       const { data: allDuplicates } = await supabase
         .from('topics')
