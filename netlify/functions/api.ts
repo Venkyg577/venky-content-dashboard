@@ -111,28 +111,37 @@ export const handler: Handler = async (event) => {
 
       if (!topic) throw new Error('Topic not found');
 
-      // Dedup check: if another topic with same canonical_id exists in active stage, consolidate
-      const { data: duplicates } = await supabase
+      // Dedup check: consolidate ALL duplicates (including archived) by canonical_id
+      const { data: allDuplicates } = await supabase
         .from('topics')
         .select('*')
         .eq('canonical_id', topic.canonical_id)
-        .not('status', 'eq', 'archived')
-        .not('status', 'eq', 'rejected')
         .not('id', 'eq', topicId);
 
-      if (duplicates && duplicates.length > 0) {
-        // Found duplicates — archive them and use this topic instead
+      if (allDuplicates && allDuplicates.length > 0) {
+        // Found duplicates across ALL states — consolidate them
         const stageOrder = { published: 5, ready_to_post: 4, drafted: 3, researched: 2, scouted: 1 };
-        const sorted = [topic, ...duplicates].sort((a, b) => (stageOrder[b.stage] || 0) - (stageOrder[a.stage] || 0));
+        const isActive = (t) => !['archived', 'rejected'].includes(t.status);
 
-        // If another topic is further along, use that one instead
-        if (sorted[0].id !== topic.id) {
-          topic = sorted[0];
+        // Sort by: active status first, then by stage (most advanced first)
+        const allTopics = [topic, ...allDuplicates].sort((a, b) => {
+          const aActive = isActive(a);
+          const bActive = isActive(b);
+          if (aActive !== bActive) return bActive ? 1 : -1; // Active first
+          return (stageOrder[b.stage] || 0) - (stageOrder[a.stage] || 0); // Then by stage
+        });
+
+        // Use the most-advanced active topic (or most-advanced overall if all archived)
+        const keeper = allTopics[0];
+        if (keeper.id !== topic.id) {
+          topic = keeper;
         }
 
-        // Archive the others
-        for (const dupe of duplicates) {
-          await supabase.from('topics').update({ status: 'archived' }).eq('id', dupe.id);
+        // Archive all others
+        for (const dupe of allDuplicates) {
+          if (dupe.id !== keeper.id) {
+            await supabase.from('topics').update({ status: 'archived' }).eq('id', dupe.id);
+          }
         }
       }
 
