@@ -111,6 +111,55 @@ export const handler: Handler = async (event) => {
 
       if (!topic) throw new Error('Topic not found');
 
+      // QUALITY GATE 1: Research brief must be present and sufficient
+      const summary = topic.summary || '';
+      if (summary.length < 5000) {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: `Research brief incomplete. Length: ${summary.length} chars (need 5000+). Ask researcher to provide complete brief.`
+          }),
+        };
+      }
+
+      // QUALITY GATE 2: Research must have clear verdict
+      const hasVerdict = /##\s*(ACCEPT|CONDITIONAL ACCEPT|REJECT)/i.test(summary);
+      if (!hasVerdict) {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: 'Research brief missing verdict. Must include one of: ## ACCEPT, ## CONDITIONAL ACCEPT, ## REJECT'
+          }),
+        };
+      }
+
+      // QUALITY GATE 3: If CONDITIONAL ACCEPT, reframe suggestion must be complete
+      if (/CONDITIONAL ACCEPT/i.test(summary)) {
+        const reframeMatch = summary.match(/Suggested reframe:\s*"([^"]+)"/i);
+        if (!reframeMatch) {
+          return {
+            statusCode: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              error: 'CONDITIONAL ACCEPT missing reframe suggestion. Must include: Suggested reframe: "[Complete Title]"'
+            }),
+          };
+        }
+        // Check that reframe suggestion is not cut off (should be reasonable length)
+        const reframeText = reframeMatch[1];
+        if (reframeText.endsWith('...') || reframeText.length < 10) {
+          return {
+            statusCode: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              error: 'Reframe suggestion appears incomplete or truncated. Provide full reframed title (10+ chars, no ellipsis).'
+            }),
+          };
+        }
+      }
+
       // Block: Cannot approve rejected topics (agent already said no)
       if (topic.status === 'rejected') {
         return {
@@ -338,6 +387,28 @@ export const handler: Handler = async (event) => {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             error: `Draft is too short (${wordCount} words). Blog posts need minimum ${minWords} words.`
+          }),
+        };
+      }
+
+      // QUALITY GATE: Draft must be substantive, not stub/placeholder
+      const content = draft.content.toLowerCase();
+      const stubIndicators = [
+        'todo:',
+        'placeholder',
+        'this is a test',
+        'under construction',
+        'coming soon',
+        'to be written',
+        'fill this in'
+      ];
+      const isStub = stubIndicators.some(indicator => content.includes(indicator));
+      if (isStub) {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: 'Draft appears to be incomplete or placeholder content. Please write substantive content before approving.'
           }),
         };
       }
