@@ -312,7 +312,50 @@ export const handler: Handler = async (event) => {
     // POST /approve-draft
     if (path === '/approve-draft' && method === 'POST') {
       const { draftId } = JSON.parse(event.body || '{}');
-      
+
+      const { data: draft } = await supabase.from('drafts')
+        .select('*')
+        .eq('id', draftId)
+        .single();
+
+      if (!draft) throw new Error('Draft not found');
+
+      // Validation: Draft must be complete before approval
+      const wordCount = draft.content ? draft.content.split(/\s+/).length : 0;
+      const minWords = draft.draft_type === 'blog' ? 1500 : 300; // Blog posts need 1500+
+
+      if (!draft.content) {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Draft is empty. Cannot approve incomplete content.' }),
+        };
+      }
+
+      if (wordCount < minWords) {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            error: `Draft is too short (${wordCount} words). Blog posts need minimum ${minWords} words.`
+          }),
+        };
+      }
+
+      // Check if associated topic is rejected
+      const { data: topic } = await supabase.from('topics')
+        .select('status')
+        .eq('title', draft.topic)
+        .single();
+
+      if (topic && topic.status === 'rejected') {
+        return {
+          statusCode: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Cannot approve draft for rejected topic.' }),
+        };
+      }
+
       await supabase.from('drafts')
         .update({ status: 'approved', stage: 'ready_to_post' })
         .eq('id', draftId);
