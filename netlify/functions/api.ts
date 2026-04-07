@@ -458,7 +458,21 @@ export const handler: Handler = async (event) => {
     // POST /revise-draft
     if (path === '/revise-draft' && method === 'POST') {
       const { draftId, feedback: feedbackText } = JSON.parse(event.body || '{}');
-      
+
+      // Get the draft to find its topic
+      const { data: draft } = await supabase.from('drafts').select('id, topic, stage').eq('id', draftId).single();
+      if (!draft) {
+        return {
+          statusCode: 404,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ error: 'Draft not found' }),
+        };
+      }
+
+      // Move draft back to pending status for revision
+      await supabase.from('drafts').update({ status: 'pending' }).eq('id', draftId);
+
+      // Create revision feedback record
       await supabase.from('feedback').insert({
         item_id: draftId,
         item_type: 'draft',
@@ -475,7 +489,7 @@ export const handler: Handler = async (event) => {
         },
         body: JSON.stringify({
           channel: process.env.SLACK_CHANNEL_AIMY,
-          text: `🔄 Revision requested\nDraft ID: ${draftId}\nFeedback: ${feedbackText}`
+          text: `🔄 Revision requested\n"${draft.topic}"\nFeedback: ${feedbackText}`
         })
       });
 

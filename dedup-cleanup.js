@@ -201,6 +201,28 @@ async function main() {
   // Rejection decisions are made manually via dashboard.
   // Cleanup script only deduplicates and syncs stages; rejections require explicit user decision.
 
+  // 7. Clear "stork working" status from topics with no active tasks
+  const { data: storkTopics } = await sb.from('topics')
+    .select('id, title, status')
+    .eq('status', 'stork working')
+    .not('status', 'eq', 'archived')
+    .not('status', 'eq', 'rejected');
+
+  if (storkTopics) {
+    for (const topic of storkTopics) {
+      const { data: activeTasks } = await sb.from('agent_tasks')
+        .select('id')
+        .eq('ref_id', topic.id)
+        .in('status', ['pending', 'running', 'claimed']);
+
+      if (!activeTasks || activeTasks.length === 0) {
+        await sb.from('topics').update({ status: 'researched' }).eq('id', topic.id);
+        log(`Cleared stale "stork working" status: "${topic.title.substring(0, 50)}" (no active tasks)`);
+        fixed++;
+      }
+    }
+  }
+
   if (fixed === 0) {
     log('No duplicates found. All clean.');
   } else {
