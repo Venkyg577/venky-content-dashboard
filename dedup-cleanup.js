@@ -201,15 +201,109 @@ async function main() {
   // Rejection decisions are made manually via dashboard.
   // Cleanup script only deduplicates and syncs stages; rejections require explicit user decision.
 
-  // 7. Clear "stork working" status from topics with no active tasks
-  const { data: storkTopics } = await sb.from('topics')
+  // 7. VALIDATION: Check research brief completeness (no truncation)
+  const { data: topicsWithBrief } = await sb.from('topics')
+    .select('id, title, summary')
+    .not('summary', 'is', null)
+    .not('status', 'eq', 'archived')
+    .not('status', 'eq', 'rejected');
+
+  if (topicsWithBrief) {
+    const truncatedBriefs = topicsWithBrief.filter(t => (t.summary || '').length < 5000);
+    if (truncatedBriefs.length > 0) {
+      log(`⚠️  WARNING: ${truncatedBriefs.length} research brief(s) are incomplete (< 5000 chars):`);
+      truncatedBriefs.forEach(t => {
+        log(`  - "${t.title.substring(0, 50)}" — ${(t.summary || '').length} chars`);
+      });
+      log('  Action: Have researcher re-research these topics with complete briefs');
+    }
+  }
+
+  // 8. VALIDATION: Check draft word counts (no stubs)
+  const { data: allDrafts } = await sb.from('drafts')
+    .select('id, topic, content, channel')
+    .not('status', 'eq', 'archived')
+    .not('status', 'eq', 'rejected');
+
+  if (allDrafts) {
+    const shortDrafts = allDrafts.filter(d => {
+      const wordCount = (d.content || '').trim().split(/\s+/).length;
+      const minWords = d.channel === 'blog' ? 1500 : 300;
+      return wordCount < minWords;
+    });
+
+    if (shortDrafts.length > 0) {
+      log(`⚠️  WARNING: ${shortDrafts.length} draft(s) are too short for publishing:`);
+      shortDrafts.forEach(d => {
+        const wordCount = (d.content || '').trim().split(/\s+/).length;
+        log(`  - "${d.topic.substring(0, 50)}" — ${wordCount} words (need 1500+ for blog)`);
+      });
+      log('  Action: Return to writer (Crane) for expansion');
+    }
+  }
+
+  // 9. VALIDATION: Check research verdicts are clear
+  const { data: researchedTopics } = await sb.from('topics')
+    .select('id, title, summary, stage')
+    .eq('stage', 'researched')
+    .not('status', 'eq', 'archived')
+    .not('status', 'eq', 'rejected');
+
+  if (researchedTopics) {
+    const missingVerdicts = researchedTopics.filter(t => {
+      const summary = (t.summary || '').toUpperCase();
+      return !summary.includes('ACCEPT') && !summary.includes('REJECT');
+    });
+
+    if (missingVerdicts.length > 0) {
+      log(`⚠️  WARNING: ${missingVerdicts.length} researched topic(s) missing clear verdict:`);
+      missingVerdicts.forEach(t => {
+        log(`  - "${t.title.substring(0, 50)}" — no ACCEPT/REJECT/CONDITIONAL ACCEPT found`);
+      });
+      log('  Action: Have researcher add clear verdict to brief');
+    }
+  }
+
+  // 10. VALIDATION: Check CONDITIONAL ACCEPT reframes are complete
+  const { data: conditionalTopics } = await sb.from('topics')
+    .select('id, title, summary')
+    .not('summary', 'is', null)
+    .not('status', 'eq', 'archived')
+    .not('status', 'eq', 'rejected');
+
+  if (conditionalTopics) {
+    const incompleteReframes = conditionalTopics.filter(t => {
+      const summary = (t.summary || '');
+      if (!summary.match(/CONDITIONAL ACCEPT/i)) return false;
+
+      // Check if reframe suggestion is complete
+      const reframeMatch = summary.match(/Suggested reframe:\s*"([^"]+)"/i);
+      if (!reframeMatch) return true; // Missing reframe suggestion
+
+      const reframeText = reframeMatch[1];
+      if (reframeText.endsWith('...') || reframeText.length < 10) return true; // Truncated
+
+      return false;
+    });
+
+    if (incompleteReframes.length > 0) {
+      log(`⚠️  WARNING: ${incompleteReframes.length} CONDITIONAL ACCEPT topic(s) have incomplete reframes:`);
+      incompleteReframes.forEach(t => {
+        log(`  - "${t.title.substring(0, 50)}" — reframe suggestion missing or truncated`);
+      });
+      log('  Action: Have researcher provide complete reframe suggestion');
+    }
+  }
+
+  // 11. Clear stale "stork working" status from topics with no active tasks
+  const { data: storkWorkingTopics } = await sb.from('topics')
     .select('id, title, status')
     .eq('status', 'stork working')
     .not('status', 'eq', 'archived')
     .not('status', 'eq', 'rejected');
 
-  if (storkTopics) {
-    for (const topic of storkTopics) {
+  if (storkWorkingTopics) {
+    for (const topic of storkWorkingTopics) {
       const { data: activeTasks } = await sb.from('agent_tasks')
         .select('id')
         .eq('ref_id', topic.id)
