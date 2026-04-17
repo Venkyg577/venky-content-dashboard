@@ -40,8 +40,16 @@ export type TaskStatus = {
 export function getTaskStatus(refId: string, agentTasks: AgentTask[], currentStage?: string): TaskStatus {
   const noTask: TaskStatus = { hasActiveTask: false, taskState: null, taskId: null, agent: null, statusLabel: '', statusColor: '', retryInfo: null };
 
-  // Scouted items never have active tasks — they're waiting for human approval
-  if (currentStage === 'scouted') return noTask;
+  // Pending scouted items wait for human approval — skip task lookup
+  // But approved scouted items may have an active research task, so allow lookup
+  if (currentStage === 'scouted') {
+    // Only check tasks for approved scouted items (approved = user clicked Approve, agent should be researching)
+    const task = agentTasks
+      .filter(t => t.ref_id === refId && t.status !== 'completed')
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0];
+    if (!task) return noTask;
+    // Fall through to task status resolution below
+  }
 
   // Find the most recent non-completed task for this item (include failed — needs retry)
   const task = agentTasks
@@ -115,7 +123,8 @@ export const getTopicActions = (stage: string, status: string, taskStatus?: Task
   const isResearched = stage === 'researched';
   const isRevising = status === TopicActionStatus.REVISION;
 
-  const isReady = (isScouted && status === TopicActionStatus.PENDING)
+  // scouted+approved with no active task = stuck (agent ran but didn't move stage) — allow re-trigger
+  const isReady = (isScouted && (status === TopicActionStatus.PENDING || status === TopicActionStatus.APPROVED))
     || (isResearched && status === TopicActionStatus.APPROVED)
     || (isResearched && status === TopicActionStatus.PENDING);
 
